@@ -1,5 +1,5 @@
 --[[
-    OA V9.3.5 | PLANETA DOS GUARDIOES
+    OA V9.3.6 | PLANETA DOS GUARDIOES
     Reescala urbana, arquitetura coerente e refinamento visual
     Tipo: Script Luau para execucao local pelo Xeno
 
@@ -22,19 +22,21 @@ local Lighting = game:GetService("Lighting")
 local Player = Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
 
-local VERSION = "9.3.5"
-local MAP_NAME = "OA_LIVING_V9_3_5"
+local VERSION = "9.3.6"
+local MAP_NAME = "OA_LIVING_V9_3_6"
 local LEGACY_MAP_NAME = "OA_LIVING_V10"
-local PREVIOUS_MINOR_PATCH_MAP_NAME = "OA_LIVING_V9_3_4"
+local PREVIOUS_MINOR_PATCH_MAP_NAME = "OA_LIVING_V9_3_5"
+local PREVIOUS_MINOR_PATCH_3_MAP_NAME = "OA_LIVING_V9_3_4"
 local PREVIOUS_MINOR_PATCH_OLD_MAP_NAME = "OA_LIVING_V9_3_3"
 local PREVIOUS_MINOR_PATCH_2_MAP_NAME = "OA_LIVING_V9_3_2"
 local PREVIOUS_MAP_NAME = "OA_LIVING_V9_3"
 local PREVIOUS_PATCH_MAP_NAME = "OA_LIVING_V9_3_1"
 local PREVIOUS_MINOR_MAP_NAME = "OA_LIVING_V9_2"
 local OLDER_MAP_NAME = "OA_LIVING_V9_1"
-local GUI_NAME = "OA_CONTROL_PANEL_V9_3_5"
+local GUI_NAME = "OA_CONTROL_PANEL_V9_3_6"
 local LEGACY_GUI_NAME = "OA_CONTROL_PANEL_V10"
-local PREVIOUS_MINOR_PATCH_GUI_NAME = "OA_CONTROL_PANEL_V9_3_4"
+local PREVIOUS_MINOR_PATCH_GUI_NAME = "OA_CONTROL_PANEL_V9_3_5"
+local PREVIOUS_MINOR_PATCH_3_GUI_NAME = "OA_CONTROL_PANEL_V9_3_4"
 local PREVIOUS_MINOR_PATCH_OLD_GUI_NAME = "OA_CONTROL_PANEL_V9_3_3"
 local PREVIOUS_MINOR_PATCH_2_GUI_NAME = "OA_CONTROL_PANEL_V9_3_2"
 local PREVIOUS_GUI_NAME = "OA_CONTROL_PANEL_V9_3"
@@ -52,6 +54,7 @@ local CITY_ROOTS = {
     ["05_PRISAO_DE_CONTENCAO"] = true, ["06_BATERIA_CENTRAL"] = true, ["06_JARDINS"] = true, ["07_DISTRITOS"] = true,
     ["08_SKYLINE"] = true, ["09_TRANSPORTE"] = true,
     ["09B_HANGAR_ORBITAL"] = true, ["10_DETALHES_URBANOS"] = true,
+    ["11_CENTRO_COMANDO"] = true, ["12_MUSEU_GUARDIOES"] = true,
 }
 
 local BUILDING = false
@@ -192,6 +195,13 @@ local function label(parent, text, position, width, height)
     local p = part("Identificacao", Vector3.new(width, height, 1),
         CFrame.new(position), C.DeepGreen, Enum.Material.SmoothPlastic, parent, 0, false)
     p.CanQuery = false
+    -- Placas elevadas recebem montantes discretos ligados ao elemento abaixo.
+    local postHeight = math.max(8, height * 0.55)
+    for side = -1, 1, 2 do
+        part("Suporte_placa", Vector3.new(1.4, postHeight, 1.4),
+            CFrame.new(position + Vector3.new(side * width * 0.38, -height/2 - postHeight/2 + 1, 0)),
+            C.Silver, Enum.Material.Metal, parent, 0, true)
+    end
 
     local surface = Instance.new("SurfaceGui")
     surface.Face = Enum.NormalId.Front
@@ -666,6 +676,21 @@ local function buildCitadel()
         makeLight(strip, C.Bright, 0.35, 16)
     end
 
+    -- Cobertura integral da Citadel: laje apoiada nas paredes e nos pilares.
+    part("Cobertura_principal_citadel", Vector3.new(216, 8, 202),
+        CFrame.new(pos + Vector3.new(0, 139, 0)), C.DarkStone, Enum.Material.Metal, f, 0, true)
+    part("Beiral_frontal_citadel", Vector3.new(220, 4, 18),
+        CFrame.new(pos + Vector3.new(0, 135, -101)), C.Gold, Enum.Material.Metal, f, 0, false)
+    for side = -1, 1, 2 do
+        part("Calha_lateral_citadel", Vector3.new(4, 3, 194),
+            CFrame.new(pos + Vector3.new(side*106, 135, 0)), C.Silver, Enum.Material.Metal, f, 0, false)
+    end
+    -- Claraboias estreitas iluminam o salao sem deixar a cobertura aberta.
+    for i = -1, 1 do
+        part("Claraboia_citadel", Vector3.new(34, 1.2, 22),
+            CFrame.new(pos + Vector3.new(i*58, 143.5, 12)), C.Glass, Enum.Material.Glass, f, 0.28, false)
+    end
+
     -- Colunas internas laterais, mantendo corredor central livre.
     for side = -1, 1, 2 do
         for row = 1, 3 do
@@ -715,6 +740,12 @@ local function buildCitadel()
         CFrame.new(pos + Vector3.new(41.5, 49, cz-38)), C.Stone, Enum.Material.Concrete, conf, 0, true)
     part("Viga_conferencia_porta", Vector3.new(40, 5, 4),
         CFrame.new(pos + Vector3.new(0, 73, cz-38)), C.Gold, Enum.Material.Metal, conf, 0, false)
+
+    -- Teto fechado da sala de conferencia, com claraboia central.
+    part("Teto_sala_conferencia", Vector3.new(130, 4, 80),
+        CFrame.new(pos + Vector3.new(cx, 77, cz)), C.DarkStone, Enum.Material.Metal, conf, 0, true)
+    part("Claraboia_sala_conferencia", Vector3.new(42, 1, 18),
+        CFrame.new(pos + Vector3.new(cx, 79.6, cz)), C.Glass, Enum.Material.Glass, conf, 0.25, false)
 
     -- Mesa modular de conselho.
     part("Mesa_conferencia_centro", Vector3.new(66, 4, 22),
@@ -766,6 +797,8 @@ local function buildCitadel()
             part("Parede_lateral_ala", Vector3.new(4, 48, 112),
                 CFrame.new(pos + Vector3.new(side*143 + edge*31, 47, 25)), C.DarkStone, Enum.Material.Concrete, wing, 0, true)
         end
+        part("Cobertura_ala", Vector3.new(66, 4, 116),
+            CFrame.new(pos + Vector3.new(side*143, 73, 25)), C.DarkStone, Enum.Material.Metal, wing, 0, true)
         part("Console_ala", Vector3.new(34, 5, 8),
             CFrame.new(pos + Vector3.new(side*143, 25, 55)), C.Metal, Enum.Material.Metal, wing, 0, true)
         local screen = neon("Painel_ala", Vector3.new(25, 10, 1),
@@ -1106,6 +1139,66 @@ local function buildDistricts()
 end
 
 --========================================================
+-- NOVOS EQUIPAMENTOS CIVICOS: COMANDO E MUSEU
+--========================================================
+local function buildCivicFacilities()
+    -- Centro de Comando no setor noroeste, com entrada frontal voltada ao sul.
+    do
+        local f = folder("11_CENTRO_COMANDO")
+        local pos = CENTER + Vector3.new(-650, 0, -80)
+        local b = buildBuilding("Centro_de_Comando", pos, 132, 116, 104, "citadel", f)
+        part("Mesa_comando", Vector3.new(58, 4, 24),
+            CFrame.new(pos + Vector3.new(0, 12, 10)), C.Metal, Enum.Material.Metal, b, 0, true)
+        local holo = neon("Mesa_holografica_comando", Vector3.new(38, 1, 18),
+            CFrame.new(pos + Vector3.new(0, 15, 10)), C.Bright, b)
+        makeLight(holo, C.Bright, 1, 34)
+        for side = -1, 1, 2 do
+            local console = part("Console_operacional", Vector3.new(22, 5, 8),
+                CFrame.new(pos + Vector3.new(side*42, 11, 28)), C.DarkGreen, Enum.Material.Metal, b, 0, true)
+            local screen = neon("Tela_operacional", Vector3.new(18, 9, 1),
+                CFrame.new(pos + Vector3.new(side*42, 20, 32)), C.Bright, b)
+            makeLight(screen, C.Bright, 0.4, 18)
+            part("Banco_operador", Vector3.new(9, 3, 8),
+                CFrame.new(pos + Vector3.new(side*42, 9, 10)), C.DarkGreen, Enum.Material.Fabric, b, 0, true)
+        end
+        label(b, "CENTRO DE COMANDO", pos + Vector3.new(0, 111, -61), 88, 14)
+        local terminal = ball("Terminal_de_comando", 9,
+            CFrame.new(pos + Vector3.new(0, 18, -25)), C.Bright, Enum.Material.Neon, b, 0, false)
+        addPrompt(terminal, "Acessar", "Centro de comando", function()
+            print("[OA V9.3.6] Centro de comando acessado.")
+        end)
+    end
+
+    -- Museu no setor nordeste, com vitrines baixas e percurso central desimpedido.
+    do
+        local f = folder("12_MUSEU_GUARDIOES")
+        local pos = CENTER + Vector3.new(650, 0, -80)
+        local b = buildBuilding("Museu_dos_Guardioes", pos, 144, 122, 88, "commercial", f)
+        for i = 1, 4 do
+            local x = -48 + (i-1)*32
+            local plinth = part("Pedestal_exposicao", Vector3.new(18, 5, 18),
+                CFrame.new(pos + Vector3.new(x, 10, 8)), C.DarkStone, Enum.Material.Metal, b, 0, true)
+            local artifact = ball("Artefato_historico", 9,
+                CFrame.new(pos + Vector3.new(x, 19, 8)), i%2==0 and C.Gold or C.Bright,
+                Enum.Material.Neon, b, 0.08, false)
+            makeLight(artifact, artifact.Color, 0.45, 16)
+        end
+        part("Balcao_museu", Vector3.new(34, 4, 7),
+            CFrame.new(pos + Vector3.new(0, 10, 43)), C.Metal, Enum.Material.Metal, b, 0, true)
+        for side = -1, 1, 2 do
+            part("Banco_museu", Vector3.new(24, 3, 6),
+                CFrame.new(pos + Vector3.new(side*43, 9, -35)), C.DarkGreen, Enum.Material.Fabric, b, 0, true)
+        end
+        label(b, "MUSEU DOS GUARDIOES", pos + Vector3.new(0, 95, -64), 96, 14)
+        local archivePrompt = part("Totem_informativo_museu", Vector3.new(5, 12, 5),
+            CFrame.new(pos + Vector3.new(0, 13, -43)), C.Metal, Enum.Material.Metal, b, 0, true)
+        addPrompt(archivePrompt, "Explorar", "Museu dos Guardioes", function()
+            print("[OA V9.3.6] Museu dos Guardioes acessado.")
+        end)
+    end
+end
+
+--========================================================
 -- TORRES E SKYLINE
 --========================================================
 local function buildTower(position, height, index, parent)
@@ -1194,6 +1287,15 @@ local function buildTransport()
         part("Passarela", Vector3.new(20, 3, 180),
             CFrame.new(p) * CFrame.Angles(0, -a, 0),
             C.Metal, Enum.Material.Metal, f, 0, true)
+        -- Pilares sob a passarela eliminam o aspecto de placas suspensas.
+        for span = -1, 1 do
+            local localOffset = Vector3.new(0, -9, span * 58)
+            local supportPos = p + CFrame.Angles(0, -a, 0):VectorToWorldSpace(localOffset)
+            part("Pilar_sustentacao_passarela", Vector3.new(5, 18, 5),
+                CFrame.new(supportPos), C.DarkStone, Enum.Material.Concrete, f, 0, true)
+            part("Base_pilar_passarela", Vector3.new(10, 2, 10),
+                CFrame.new(supportPos - Vector3.new(0, 9, 0)), C.Metal, Enum.Material.Metal, f, 0, true)
+        end
         for side = -1, 1, 2 do
             part("Guarda_corpo", Vector3.new(2, 8, 180),
                 CFrame.new(p + Vector3.new(side * 10, 5, 0)) * CFrame.Angles(0, -a, 0),
@@ -1228,6 +1330,12 @@ local function buildOrbitalHangar()
     local walkwayEnd = pos + Vector3.new(-90, 16, 0)
     beam("Passarela_ao_hangar", walkwayStart, walkwayEnd, 12, C.Metal, f)
     beam("Guia_luminosa_passarela", walkwayStart + Vector3.new(0, 3, 0), walkwayEnd + Vector3.new(0, 3, 0), 2, C.Bright, f)
+    local bridgeDelta = walkwayEnd - walkwayStart
+    for i = 1, 3 do
+        local supportPos = walkwayStart + bridgeDelta * (i / 4) - Vector3.new(0, 8, 0)
+        part("Pilar_passarela_hangar", Vector3.new(7, 16, 7),
+            CFrame.new(supportPos), C.DarkStone, Enum.Material.Concrete, f, 0, true)
+    end
 end
 
 local function buildHolographicMap()
@@ -1291,6 +1399,19 @@ local function buildUrbanDetails()
         neon("Balizador", Vector3.new(2, 7, 2),
             CFrame.new(pos + Vector3.new(0, 5, 0)), C.Bright, f)
     end
+
+    -- Mobiliario urbano discreto, sempre apoiado no piso.
+    for i = 1, 8 do
+        local a = i * math.pi / 4
+        local pos = CENTER + Vector3.new(math.cos(a) * 250, 0, math.sin(a) * 250)
+        local yaw = -a
+        part("Banco_avenida", Vector3.new(18, 2.5, 5),
+            CFrame.new(pos + Vector3.new(0, 3, 0)) * CFrame.Angles(0, yaw, 0),
+            C.DarkGreen, Enum.Material.Wood, f, 0, true)
+        part("Lixeira_urbana", Vector3.new(4, 8, 4),
+            CFrame.new(pos + Vector3.new(15, 4, 0)),
+            C.Metal, Enum.Material.Metal, f, 0, true)
+    end
 end
 
 --========================================================
@@ -1312,6 +1433,7 @@ local BUILD_STEPS = {
     {"Transporte", buildTransport},
     {"Hangar orbital", buildOrbitalHangar},
     {"Mapa holografico", buildHolographicMap},
+    {"Centro de comando e museu", buildCivicFacilities},
     {"Detalhes urbanos", buildUrbanDetails},
 }
 
@@ -1348,6 +1470,8 @@ local function buildOA(onProgress)
         if legacyMap and legacyMap.Parent then legacyMap:Destroy() end
         local previousMinorPatchMap = workspace:FindFirstChild(PREVIOUS_MINOR_PATCH_MAP_NAME)
         if previousMinorPatchMap and previousMinorPatchMap.Parent then previousMinorPatchMap:Destroy() end
+        local previousMinorPatch3Map = workspace:FindFirstChild(PREVIOUS_MINOR_PATCH_3_MAP_NAME)
+        if previousMinorPatch3Map and previousMinorPatch3Map.Parent then previousMinorPatch3Map:Destroy() end
         local previousMinorPatchOldMap = workspace:FindFirstChild(PREVIOUS_MINOR_PATCH_OLD_MAP_NAME)
         if previousMinorPatchOldMap and previousMinorPatchOldMap.Parent then previousMinorPatchOldMap:Destroy() end
         local previousMinorPatch2Map = workspace:FindFirstChild(PREVIOUS_MINOR_PATCH_2_MAP_NAME)
@@ -1373,7 +1497,7 @@ local function buildOA(onProgress)
     DOOR_STATES = {}
     LOCKDOWN = false
     BUILDING = false
-    warn("[OA V9.3.5] Reconstrucao cancelada; rollback executado:\n" .. tostring(err))
+    warn("[OA V9.3.6] Reconstrucao cancelada; rollback executado:\n" .. tostring(err))
     return false, tostring(err)
 end
 
@@ -1386,6 +1510,8 @@ local legacyGui = PlayerGui:FindFirstChild(LEGACY_GUI_NAME)
 if legacyGui then legacyGui:Destroy() end
 local previousMinorPatchGui = PlayerGui:FindFirstChild(PREVIOUS_MINOR_PATCH_GUI_NAME)
 if previousMinorPatchGui then previousMinorPatchGui:Destroy() end
+local previousMinorPatch3Gui = PlayerGui:FindFirstChild(PREVIOUS_MINOR_PATCH_3_GUI_NAME)
+if previousMinorPatch3Gui then previousMinorPatch3Gui:Destroy() end
 local previousMinorPatchOldGui = PlayerGui:FindFirstChild(PREVIOUS_MINOR_PATCH_OLD_GUI_NAME)
 if previousMinorPatchOldGui then previousMinorPatchOldGui:Destroy() end
 local previousMinorPatch2Gui = PlayerGui:FindFirstChild(PREVIOUS_MINOR_PATCH_2_GUI_NAME)
@@ -1495,7 +1621,7 @@ Layout.Parent = Content
 local Status = Instance.new("TextLabel")
 Status.Size = UDim2.new(1, -4, 0, 42)
 Status.BackgroundColor3 = Color3.fromRGB(20, 45, 35)
-Status.Text = "OA V9.3.5 | Inicializando"
+Status.Text = "OA V9.3.6 | Inicializando"
 Status.TextColor3 = C.Bright
 Status.TextSize = 12
 Status.Font = Enum.Font.Gotham
@@ -1681,7 +1807,7 @@ local Info = Instance.new("TextLabel")
 Info.Size = UDim2.new(1, -4, 0, 45)
 Info.LayoutOrder = 9
 Info.BackgroundTransparency = 1
-Info.Text = "PLANETA DOS GUARDIOES\nOA V9.3.5 | SISTEMA LOCAL"
+Info.Text = "PLANETA DOS GUARDIOES\nOA V9.3.6 | SISTEMA LOCAL"
 Info.TextColor3 = C.LightStone
 Info.TextSize = 11
 Info.Font = Enum.Font.Gotham
@@ -1789,7 +1915,7 @@ end)
 --========================================================
 -- INICIALIZACAO
 --========================================================
-setStatus("Construindo OA V9.3.5...")
+setStatus("Construindo OA V9.3.6...")
 task.spawn(function()
     local ok, message = buildOA(function(stepName, index, total)
         setStatus(string.format("Construindo: %s (%d/%d)", stepName, index, total))
@@ -1803,15 +1929,18 @@ task.spawn(function()
 end)
 
 print("========================================")
-print(" OA V9.3.5 | PLANETA DOS GUARDIOES")
+print(" OA V9.3.6 | PLANETA DOS GUARDIOES")
 print(" Execucao local independente habilitada.")
 print(" Reconstrucao transacional habilitada.")
 print(" GPS sem seta, distancia em metros e atmosfera verde local.")
 print(" Campo de protecao visual e identificador distante OA habilitados.")
-print(" Arquitetura urbana reescalada e skyline mais equilibrado.")
+print(" Arquitetura urbana revisada, coberturas e placas apoiadas.")
+print(" Centro de Comando e Museu dos Guardioes adicionados.")
 print(" Identificador distante OA e campo visual de protecao adicionados.")
 print(" Bateria Central, telhado hibrido e Citadel monumental adicionados.")
 print(" Edificios com interiores modulares.")
+print(" Citadel, alas e sala de conferencia com coberturas fechadas.")
+print(" Placas com suportes, passarelas com pilares e mobiliario urbano.")
 print(" Lockdown e portas interativas locais.")
 print(" Horario e clima do jogo preservados.")
 print("========================================")
