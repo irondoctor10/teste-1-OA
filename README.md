@@ -1,5 +1,5 @@
 --[[
-    OA V9.3.6 | PLANETA DOS GUARDIOES
+    OA FINAL | PLANETA DOS GUARDIOES
     Reescala urbana, arquitetura coerente e refinamento visual
     Tipo: Script Luau para execucao local pelo Xeno
 
@@ -8,6 +8,14 @@
     criados no cliente local. Nada e enviado ao servidor e outros jogadores
     nao recebem estas alteracoes. O codigo nao usa APIs exclusivas de
     executor, chamadas remotas ou mecanismos de contorno de protecoes.
+
+    REVISAO VISUAL DO GLOBO:
+    - Visto de fora, o globo e um planeta verde opaco e luminoso, com
+      nevoa verde, nuvens e destrocos ao redor. A cidade nao aparece.
+    - Ao entrar no globo, a casca e a nevoa desaparecem suavemente e OA
+      fica visivel por dentro.
+    - Estruturas externas (orbitas, estacoes, satelites, emissores e
+      berco inferior) foram refinadas.
 ]]
 
 --========================================================
@@ -22,8 +30,8 @@ local Lighting = game:GetService("Lighting")
 local Player = Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
 
-local VERSION = "9.3.6"
-local MAP_NAME = "OA_LIVING_V9_3_6"
+local VERSION = "FINAL"
+local MAP_NAME = "OA_LIVING_FINAL"
 local LEGACY_MAP_NAME = "OA_LIVING_V10"
 local PREVIOUS_MINOR_PATCH_MAP_NAME = "OA_LIVING_V9_3_5"
 local PREVIOUS_MINOR_PATCH_3_MAP_NAME = "OA_LIVING_V9_3_4"
@@ -33,7 +41,7 @@ local PREVIOUS_MAP_NAME = "OA_LIVING_V9_3"
 local PREVIOUS_PATCH_MAP_NAME = "OA_LIVING_V9_3_1"
 local PREVIOUS_MINOR_MAP_NAME = "OA_LIVING_V9_2"
 local OLDER_MAP_NAME = "OA_LIVING_V9_1"
-local GUI_NAME = "OA_CONTROL_PANEL_V9_3_6"
+local GUI_NAME = "OA_CONTROL_PANEL_FINAL"
 local LEGACY_GUI_NAME = "OA_CONTROL_PANEL_V10"
 local PREVIOUS_MINOR_PATCH_GUI_NAME = "OA_CONTROL_PANEL_V9_3_5"
 local PREVIOUS_MINOR_PATCH_3_GUI_NAME = "OA_CONTROL_PANEL_V9_3_4"
@@ -73,6 +81,16 @@ local runtimeConnections = {}
 local atmosphereActive = false
 local gpsDestinationIndex = 1
 
+-- Pecas da "pele externa" do planeta (casca, nevoa, nuvens, campo).
+-- Somem suavemente quando a camera entra no globo.
+local OUTER_PARTS = {}
+local outerFade = 0
+local lastAppliedFade = -1
+
+-- Esferas de energia que orbitam a Bateria Central e luz pulsante do nucleo.
+local batteryOrbs = {}
+local batteryCoreLight = nil
+
 local C = {
     Green = Color3.fromRGB(35, 190, 105),
     Bright = Color3.fromRGB(90, 255, 155),
@@ -90,6 +108,11 @@ local C = {
     Road = Color3.fromRGB(25, 34, 31),
     Soil = Color3.fromRGB(45, 65, 46),
     Red = Color3.fromRGB(180, 45, 45),
+    -- Paleta do planeta visto de fora (inspirada na referencia).
+    PlanetLime = Color3.fromRGB(165, 232, 82),
+    PlanetPale = Color3.fromRGB(222, 255, 160),
+    HaloGreen = Color3.fromRGB(120, 255, 70),
+    DebrisGreen = Color3.fromRGB(38, 92, 52),
 }
 
 local function folder(name, parent)
@@ -97,6 +120,20 @@ local function folder(name, parent)
     f.Name = name
     f.Parent = parent or Map
     return f
+end
+
+local function tagOuter(p, baseTransparency)
+    OUTER_PARTS[#OUTER_PARTS + 1] = {part = p, base = baseTransparency or p.Transparency}
+    return p
+end
+
+local function applyOuterFade(fade)
+    for _, entry in ipairs(OUTER_PARTS) do
+        local p = entry.part
+        if p and p.Parent then
+            p.Transparency = entry.base + (1 - entry.base) * fade
+        end
+    end
 end
 
 -- Todos os objetos sao ancorados. Por padrao, pecas decorativas nao
@@ -240,49 +277,114 @@ local function addPrompt(parent, action, object, callback)
     return prompt
 end
 
+local function randomDirection(rng)
+    local v = Vector3.new(rng:NextNumber(-1, 1), rng:NextNumber(-1, 1), rng:NextNumber(-1, 1))
+    if v.Magnitude < 0.05 then return Vector3.new(0, 1, 0) end
+    return v.Unit
+end
+
 --========================================================
--- GLOBO, ATMOSFERA, MERIDIANOS E ORBITAS
+-- GLOBO, ATMOSFERA, ORBITAS E ESTRUTURAS EXTERNAS
 --========================================================
 local function buildGlobe()
     local f = folder("01_PLANETA_E_ATMOSFERA")
+    local rng = Random.new(906)
 
+    -- Casca opaca: de fora, o planeta e uma esfera verde-limao luminosa.
+    -- A cidade dentro dela fica totalmente oculta ate o jogador entrar.
     local shell = ball("Globo_de_OA", GLOBE_RADIUS * 2, CFrame.new(CENTER),
-        C.Glass, Enum.Material.Glass, f, 0.965, false)
+        C.PlanetLime, Enum.Material.Neon, f, 0, false)
     shell.CastShadow = false
+    tagOuter(shell, 0)
 
-    local atmosphere = ball("Atmosfera_externa", GLOBE_RADIUS * 2.025,
-        CFrame.new(CENTER), C.Bright, Enum.Material.ForceField, f, 0.985, false)
-    atmosphere.CastShadow = false
-
-    for degree = -75, 75, 15 do
-        local angle = math.rad(degree)
-        local radius = GLOBE_RADIUS * math.cos(angle)
-        local y = GLOBE_RADIUS * math.sin(angle)
-        if radius > 0 then
-            buildRing("Latitude_" .. degree, CENTER, radius, 1.4, y,
-                C.Green, 40, f)
+    -- Faixas de nuvem claras sobre a superficie, como na referencia.
+    local function band(latDeg, height, color, alpha, segments)
+        local lat = math.rad(latDeg)
+        local radius = GLOBE_RADIUS * math.cos(lat) + 1
+        local y = GLOBE_RADIUS * math.sin(lat)
+        local arc = (2 * math.pi * radius / segments) * 1.02
+        for i = 1, segments do
+            local mid = ((i - 0.5) / segments) * math.pi * 2
+            local strip = part("Faixa_de_nuvem", Vector3.new(3, height, arc),
+                CFrame.new(CENTER + Vector3.new(math.cos(mid) * radius, y, math.sin(mid) * radius))
+                    * CFrame.Angles(0, -mid, 0),
+                color, Enum.Material.Neon, f, alpha, false)
+            strip.CastShadow = false
+            tagOuter(strip, alpha)
         end
     end
+    band(34, 5, C.PlanetPale, 0.62, 72)
+    band(22, 4, C.PlanetPale, 0.70, 72)
+    band(8, 6, C.PlanetPale, 0.58, 72)
+    band(-12, 5, C.PlanetPale, 0.66, 72)
+    band(-30, 4, C.PlanetPale, 0.72, 72)
 
-    for meridian = 0, 7 do
-        local rotation = math.rad(meridian * 22.5)
-        local previous = nil
-        for step = 0, 40 do
-            local angle = (step / 40) * math.pi * 2
-            local pos = CENTER + Vector3.new(
-                math.sin(angle) * GLOBE_RADIUS * math.cos(rotation),
-                math.cos(angle) * GLOBE_RADIUS,
-                math.sin(angle) * GLOBE_RADIUS * math.sin(rotation)
-            )
-            if previous then beam("Meridiano", previous, pos, 1.2, C.Bright, f) end
-            previous = pos
-        end
+    -- Camadas de brilho: halo verde que cria o resplendor da imagem.
+    local haloLayers = {
+        {1.05, 0.905}, {1.09, 0.945}, {1.15, 0.975},
+    }
+    for index, layer in ipairs(haloLayers) do
+        local halo = ball("Halo_verde_" .. index, GLOBE_RADIUS * 2 * layer[1],
+            CFrame.new(CENTER), C.HaloGreen, Enum.Material.Neon, f, layer[2], false)
+        halo.CastShadow = false
+        tagOuter(halo, layer[2])
     end
 
+    -- Nevoa gasosa: blobs translucidos espalhados em volta do planeta.
+    for i = 1, 14 do
+        local dir = randomDirection(rng)
+        local dist = GLOBE_RADIUS * rng:NextNumber(1.06, 1.22)
+        local size = rng:NextNumber(150, 300)
+        local alpha = rng:NextNumber(0.93, 0.972)
+        local cloud = ball("Nevoa_gasosa", size, CFrame.new(CENTER + dir * dist),
+            i % 3 == 0 and C.PlanetPale or C.HaloGreen, Enum.Material.Neon, f, alpha, false)
+        cloud.CastShadow = false
+        tagOuter(cloud, alpha)
+    end
+
+    -- Destrocos e fragmentos flutuando ao redor, como na referencia.
+    for i = 1, 70 do
+        local dir = randomDirection(rng)
+        local dist = GLOBE_RADIUS * rng:NextNumber(1.13, 1.55)
+        local s = rng:NextNumber(4, 16)
+        local shard = part("Fragmento_orbital",
+            Vector3.new(s, s * rng:NextNumber(0.5, 1.4), s * rng:NextNumber(0.6, 1.2)),
+            CFrame.new(CENTER + dir * dist)
+                * CFrame.Angles(rng:NextNumber(0, 6.28), rng:NextNumber(0, 6.28), rng:NextNumber(0, 6.28)),
+            i % 5 == 0 and C.Green or C.DebrisGreen, Enum.Material.Slate, f, 0, false)
+        shard.CastShadow = false
+    end
+
+    -- Globo sem feicoes: rosto e acessorios removidos.
+
+    -- Orbitas (mantidas), agora com anel luminoso fino por cima.
     buildRing("Orbita_principal", CENTER, 1160, 5, 0, C.Green, 80, f)
+    buildRing("Orbita_luminosa", CENTER, 1160, 1.6, 3, C.Bright, 80, f, Enum.Material.Neon)
     buildRing("Orbita_secundaria", CENTER, 1220, 2, 100, C.Silver, 80, f)
     buildRing("Orbita_dourada", CENTER, 1090, 3, -110, C.Gold, 80, f)
 
+    -- Estacoes orbitais sobre a orbita principal.
+    for i = 1, 6 do
+        local a = (i - 1) * math.pi / 3 + math.pi / 6
+        local pos = CENTER + Vector3.new(math.cos(a) * 1160, 0, math.sin(a) * 1160)
+        local face = CFrame.new(pos) * CFrame.Angles(0, -a, 0)
+        cylinder("Estacao_orbital_modulo", 34, 22, CFrame.new(pos),
+            C.Metal, Enum.Material.Metal, f, false)
+        local ring = cylinder("Estacao_orbital_anel", 40, 3,
+            CFrame.new(pos + Vector3.new(0, 7, 0)), C.Bright, Enum.Material.Neon, f, false)
+        ring.CastShadow = false
+        for side = -1, 1, 2 do
+            part("Estacao_painel_solar", Vector3.new(34, 1, 12),
+                face * CFrame.new(0, 0, side * 32), C.DarkGreen, Enum.Material.Glass, f, 0.15, false)
+            part("Estacao_braco", Vector3.new(2, 2, 20),
+                face * CFrame.new(0, 0, side * 16), C.Silver, Enum.Material.Metal, f, 0, false)
+        end
+        local lamp = neon("Estacao_luz", Vector3.new(6, 4, 6),
+            CFrame.new(pos + Vector3.new(0, 14, 0)), C.Bright, f)
+        makeLight(lamp, C.Bright, 0.9, 45)
+    end
+
+    -- Satelites (mantidos), agora com paineis solares e antena.
     for i = 1, 8 do
         local a = i * math.pi / 4
         local pos = CENTER + Vector3.new(math.cos(a) * 1260,
@@ -293,6 +395,15 @@ local function buildGlobe()
             C.Bright, Enum.Material.Neon, f, 0, false)
         if i % 2 == 0 then makeLight(core, C.Bright, 0.8, 22) end
         beam("Braco_satelite", pos, CENTER + (pos - CENTER).Unit * 1160, 2, C.Silver, f)
+        local face = CFrame.new(pos) * CFrame.Angles(0, -a, 0)
+        for side = -1, 1, 2 do
+            part("Painel_solar_satelite", Vector3.new(2, 1, 22),
+                face * CFrame.new(side * 0, 0, side * 24), C.DarkGreen, Enum.Material.Glass, f, 0.18, false)
+            part("Haste_painel", Vector3.new(1.2, 1.2, 8),
+                face * CFrame.new(0, 0, side * 13), C.Silver, Enum.Material.Metal, f, 0, false)
+        end
+        cylinder("Antena_satelite", 7, 1.5,
+            face * CFrame.new(0, 14, 0), C.Silver, Enum.Material.Metal, f, false)
     end
 
     for i = 1, 4 do
@@ -300,36 +411,52 @@ local function buildGlobe()
         local pos = CENTER + Vector3.new(math.cos(a) * 960, 0, math.sin(a) * 960)
         local anchor = ball("Ancora_atmosferica", 15, CFrame.new(pos),
             C.Bright, Enum.Material.Neon, f, 0, false)
+        tagOuter(anchor, 0)
         if i == 1 then makeLight(anchor, C.Bright, 1.5, 40) end
     end
 end
 
 --========================================================
--- ESTRUTURA INFERIOR DO PLANETA
+-- ESTRUTURA INFERIOR DO PLANETA (BERCO DE SUSTENTACAO)
 --========================================================
 local function buildPlanetaryUnderside()
     local f = folder("01A_ESTRUTURA_INFERIOR_DO_PLANETA")
-    -- Reforco visual sob o hemisferio inferior, sem alterar a esfera principal.
-    for index, radius in ipairs({760, 610, 455}) do
+    local baseY = -GLOBE_RADIUS - 62
+
+    -- Aneis do berco, abaixo do hemisferio inferior.
+    for index, radius in ipairs({640, 500, 360}) do
         buildRing("Aro_inferior_estrutural_" .. index, CENTER, radius,
-            index == 1 and 8 or 5, -GLOBE_RADIUS * 0.72 - (index - 1) * 34,
-            index == 2 and C.Bright or C.Green, 64, f,
+            index == 1 and 9 or 5, baseY - (index - 1) * 38,
+            index == 2 and C.Bright or C.Green, 72, f,
             index == 2 and Enum.Material.Neon or Enum.Material.Metal)
     end
-    local spine = cylinder("Coluna_inferior_central", 46, 210,
-        CFrame.new(CENTER + Vector3.new(0, -GLOBE_RADIUS * 0.83, 0)),
-        C.DarkGreen, Enum.Material.Metal, f, false)
-    local core = ball("Nucleo_inferior", 58,
-        CFrame.new(CENTER + Vector3.new(0, -GLOBE_RADIUS * 0.91, 0)),
+
+    -- Disco-base largo e coluna central de sustentacao.
+    cylinder("Disco_base_inferior", 300, 12,
+        CFrame.new(CENTER + Vector3.new(0, baseY - 118, 0)), C.DarkStone, Enum.Material.Metal, f, false)
+    cylinder("Coluna_inferior_central", 70, 150,
+        CFrame.new(CENTER + Vector3.new(0, -GLOBE_RADIUS - 52, 0)), C.DarkGreen, Enum.Material.Metal, f, false)
+    cylinder("Colar_coluna_inferior", 92, 8,
+        CFrame.new(CENTER + Vector3.new(0, -GLOBE_RADIUS - 118, 0)), C.Silver, Enum.Material.Metal, f, false)
+    local core = ball("Nucleo_inferior", 62,
+        CFrame.new(CENTER + Vector3.new(0, baseY - 150, 0)),
         C.Bright, Enum.Material.Neon, f, 0, false)
-    makeLight(core, C.Bright, 1.8, 90)
+    makeLight(core, C.Bright, 1.8, 120)
+
+    -- Nervuras: do anel externo ate pontos na superficie do globo (latitude -55).
+    local lat = math.rad(-55)
+    local surfaceRadius = GLOBE_RADIUS * math.cos(lat)
+    local surfaceY = GLOBE_RADIUS * math.sin(lat)
     for i = 1, 8 do
         local a = (i - 1) * math.pi / 4
-        local outer = CENTER + Vector3.new(math.cos(a) * 690, -GLOBE_RADIUS * 0.77, math.sin(a) * 690)
-        local inner = CENTER + Vector3.new(math.cos(a) * 330, -GLOBE_RADIUS * 0.88, math.sin(a) * 330)
-        beam("Nervura_inferior", outer, inner, 5, C.Silver, f)
-        local node = ball("No_energetico_inferior", 17, CFrame.new(outer), C.Green, Enum.Material.Neon, f, 0, false)
-        if i % 2 == 0 then makeLight(node, C.Green, 0.7, 35) end
+        local outer = CENTER + Vector3.new(math.cos(a) * 640, baseY, math.sin(a) * 640)
+        local onSurface = CENTER + Vector3.new(math.cos(a) * surfaceRadius, surfaceY, math.sin(a) * surfaceRadius)
+        beam("Nervura_inferior", outer, onSurface, 9, C.Silver, f)
+        local inner = CENTER + Vector3.new(math.cos(a) * 140, baseY - 118, math.sin(a) * 140)
+        beam("Tirante_inferior", outer - Vector3.new(0, 4, 0), inner, 4, C.Metal, f)
+        local node = ball("No_energetico_inferior", 20, CFrame.new(onSurface), C.Green, Enum.Material.Neon, f, 0, false)
+        if i % 2 == 0 then makeLight(node, C.Green, 0.7, 40) end
+        ball("Junta_berco", 16, CFrame.new(outer), C.Silver, Enum.Material.Metal, f, 0, false)
     end
 end
 
@@ -342,31 +469,48 @@ local function buildProtectionField()
     local shell = ball("Membrana_externa_do_campo", outerDiameter,
         CFrame.new(CENTER), C.Bright, Enum.Material.ForceField, f, 0.945, false)
     shell.CastShadow = false
+    tagOuter(shell, 0.945)
 
     local innerShell = ball("Membrana_interna_do_campo", GLOBE_RADIUS * 2.045,
         CFrame.new(CENTER), C.Green, Enum.Material.Neon, f, 0.978, false)
     innerShell.CastShadow = false
+    tagOuter(innerShell, 0.978)
 
     -- Linhas de energia em tres planos, sem criar uma malha excessivamente pesada.
-    buildRing("Linha_equatorial_do_escudo", CENTER, GLOBE_RADIUS * 1.035,
-        2.2, 0, C.Bright, 64, f, Enum.Material.Neon)
-    buildRing("Linha_polar_norte", CENTER, GLOBE_RADIUS * 0.82,
-        1.5, GLOBE_RADIUS * 0.48, C.Green, 56, f, Enum.Material.Neon)
-    buildRing("Linha_polar_sul", CENTER, GLOBE_RADIUS * 0.82,
-        1.5, -GLOBE_RADIUS * 0.48, C.Green, 56, f, Enum.Material.Neon)
+    for _, piece in ipairs(buildRing("Linha_equatorial_do_escudo", CENTER, GLOBE_RADIUS * 1.035,
+        2.2, 0, C.Bright, 64, f, Enum.Material.Neon)) do tagOuter(piece, 0) end
+    for _, piece in ipairs(buildRing("Linha_polar_norte", CENTER, GLOBE_RADIUS * 0.82,
+        1.5, GLOBE_RADIUS * 0.48, C.Green, 56, f, Enum.Material.Neon)) do tagOuter(piece, 0) end
+    for _, piece in ipairs(buildRing("Linha_polar_sul", CENTER, GLOBE_RADIUS * 0.82,
+        1.5, -GLOBE_RADIUS * 0.48, C.Green, 56, f, Enum.Material.Neon)) do tagOuter(piece, 0) end
 
-    -- Emissores externos decorativos, distribuidos em volta do planeta.
+    -- Emissores externos: pilar com base, anel e nucleo luminoso.
+    local capPositions = {}
     for i = 1, 8 do
         local angle = (i - 1) * math.pi / 4
         local emitterPos = CENTER + Vector3.new(math.cos(angle) * 1000, 0, math.sin(angle) * 1000)
-        local emitter = cylinder("Emissor_do_campo", 24, 54,
-            CFrame.new(emitterPos + Vector3.new(0, 28, 0)), C.DarkGreen, Enum.Material.Metal, f, false)
-        local cap = neon("Nucleo_emissor", Vector3.new(8, 12, 8),
-            CFrame.new(emitterPos + Vector3.new(0, 58, 0)), C.Bright, f)
-        makeLight(cap, C.Bright, 1.15, 38)
-        beam("Ligacao_emissor_ao_campo", emitterPos + Vector3.new(0, 58, 0),
+        cylinder("Base_do_emissor", 40, 12,
+            CFrame.new(emitterPos + Vector3.new(0, 6, 0)), C.DarkStone, Enum.Material.Metal, f, false)
+        cylinder("Emissor_do_campo", 22, 56,
+            CFrame.new(emitterPos + Vector3.new(0, 36, 0)), C.DarkGreen, Enum.Material.Metal, f, false)
+        cylinder("Colar_do_emissor", 30, 5,
+            CFrame.new(emitterPos + Vector3.new(0, 52, 0)), C.Silver, Enum.Material.Metal, f, false)
+        local capPos = emitterPos + Vector3.new(0, 66, 0)
+        local cap = neon("Nucleo_emissor", Vector3.new(10, 14, 10), CFrame.new(capPos), C.Bright, f)
+        makeLight(cap, C.Bright, 1.15, 42)
+        capPositions[i] = capPos
+        beam("Ligacao_emissor_ao_campo", capPos,
             CENTER + Vector3.new(math.cos(angle) * 970, 0, math.sin(angle) * 970),
             2.2, C.Bright, f)
+    end
+    -- Arcos de energia ligando emissores vizinhos.
+    for i = 1, 8 do
+        local nextIndex = (i % 8) + 1
+        local arc = beam("Arco_de_energia_do_campo", capPositions[i], capPositions[nextIndex], 1.6, C.Bright, f)
+        if arc then
+            arc.Material = Enum.Material.Neon
+            arc.CastShadow = false
+        end
     end
 end
 
@@ -382,7 +526,7 @@ local function buildDistantPlanetBeacon()
     billboard.Adornee = anchor
     billboard.AlwaysOnTop = true
     billboard.LightInfluence = 0
-    billboard.MaxDistance = 0
+    billboard.MaxDistance = math.huge
     billboard.Size = UDim2.fromOffset(260, 76)
     billboard.StudsOffset = Vector3.new(0, 0, 0)
     billboard.Parent = anchor
@@ -615,13 +759,53 @@ local function buildBuilding(name, position, width, depth, height, style, parent
             C.DarkGreen, Enum.Material.Metal, f, 0, true)
     end
 
+    -- Reforma da fachada: colunas de canto, janelas laterais e faixas luminosas.
+    for sx = -1, 1, 2 do
+        for sz = -1, 1, 2 do
+            part("Coluna_de_canto", Vector3.new(4, height + 8, 4),
+                CFrame.new(position.X + sx * (width / 2 - 1), wallY + 2, position.Z + sz * (depth / 2 - 1)),
+                C.DarkStone, Enum.Material.Metal, f, 0, false)
+        end
+    end
+    for level = 1, floorCount do
+        local y = position.Y + 5 + math.min(height - 9, level * floorHeight - 8)
+        for side = -1, 1, 2 do
+            for k = -1, 1, 2 do
+                local pane = part("Janela_lateral", Vector3.new(0.8, 6.5, math.max(7, depth * 0.22)),
+                    CFrame.new(position.X + side * (width / 2 + 0.35), y, position.Z + k * depth * 0.22),
+                    glassColor, Enum.Material.Glass, f, 0.38, false)
+                pane.CastShadow = false
+            end
+        end
+    end
+    for side = -1, 1, 2 do
+        local strip = neon("Faixa_da_entrada", Vector3.new(0.8, 18, 0.8),
+            CFrame.new(position.X + side * (entryWidth / 2 + 1.5), position.Y + 15, frontZ - 1.8),
+            accentColor, f)
+        strip.CastShadow = false
+    end
+    -- Coroa escalonada nos edificios altos.
+    local crownLift = 0
+    if height >= 90 then
+        crownLift = 16
+        part("Coroa_escalonada", Vector3.new(width * 0.6, 16, depth * 0.6),
+            CFrame.new(position.X, position.Y + height + 17, position.Z),
+            wallColor, Enum.Material.Metal, f, 0, true)
+        local band = part("Faixa_de_vidro_coroa", Vector3.new(width * 0.6 + 0.6, 5, depth * 0.6 + 0.6),
+            CFrame.new(position.X, position.Y + height + 18, position.Z),
+            glassColor, Enum.Material.Glass, f, 0.4, false)
+        band.CastShadow = false
+        neon("Aro_luminoso_coroa", Vector3.new(width * 0.6 + 2, 1, depth * 0.6 + 2),
+            CFrame.new(position.X, position.Y + height + 25.5, position.Z), accentColor, f)
+    end
+
     local interior = neon("Iluminacao_interna", Vector3.new(width * 0.28, 0.5, 2),
         CFrame.new(position + Vector3.new(0, 5 + math.min(17, height - 5), 0)),
         C.Bright, f)
     makeLight(interior, C.Bright, 0.65, math.min(26, width * 0.4))
 
     local beacon = neon("Sinalizador_tecnico", Vector3.new(3, 6, 3),
-        CFrame.new(position + Vector3.new(0, height + 14, 0)), accentColor, f)
+        CFrame.new(position + Vector3.new(0, height + 14 + crownLift, 0)), accentColor, f)
     if BUILDING_COUNT % 4 == 0 then makeLight(beacon, accentColor, 0.55, 18) end
     return f
 end
@@ -1025,7 +1209,7 @@ local function buildCentralBattery()
     shell.Reflectance = 0.08
     local core = ball("Nucleo_luminoso", 82,
         CFrame.new(p + Vector3.new(0, 112, -39)), C.White, Enum.Material.Neon, f, 0, false)
-    makeLight(core, Color3.fromRGB(190, 255, 190), 3.2, 95)
+    batteryCoreLight = makeLight(core, Color3.fromRGB(190, 255, 190), 3.2, 95)
     local coreRim = cylinder("Aro_frontal_nucleo", 94, 5,
         CFrame.new(p + Vector3.new(0, 112, -40)) * CFrame.Angles(math.rad(90), 0, 0),
         C.DarkGreen, Enum.Material.Metal, f, false)
@@ -1057,6 +1241,85 @@ local function buildCentralBattery()
     local statusPanel = neon("Painel_status_bateria", Vector3.new(38, 12, 2),
         CFrame.new(p + Vector3.new(0, 25, -52)), C.Bright, f)
     makeLight(statusPanel, C.Bright, 0.7, 25)
+
+    -- Degraus alargados sob a plataforma.
+    cylinder("Degrau_base_externo", 270, 4, CFrame.new(p + Vector3.new(0, 2, 0)),
+        C.DarkStone, Enum.Material.Marble, f, true)
+    cylinder("Degrau_base_interno", 235, 7, CFrame.new(p + Vector3.new(0, 3.5, 0)),
+        C.Stone, Enum.Material.Marble, f, true)
+    buildRing("Aro_dourado_degrau", p, 133, 3, 4.6, C.Gold, 64, f)
+
+    -- Raios luminosos no piso da plataforma.
+    for i = 1, 12 do
+        local a = (i - 1) * math.pi / 6
+        neon("Raio_da_plataforma", Vector3.new(70, 0.5, 2.4),
+            CFrame.new(p + Vector3.new(math.cos(a) * 52, 10.3, math.sin(a) * 52)) * CFrame.Angles(0, -a, 0),
+            C.Bright, f)
+    end
+
+    -- Postes de luz ao redor da plataforma.
+    for i = 1, 8 do
+        local a = (i - 1) * math.pi / 4 + math.pi / 8
+        local base = p + Vector3.new(math.cos(a) * 106, 0, math.sin(a) * 106)
+        part("Poste_da_bateria", Vector3.new(2.4, 20, 2.4), CFrame.new(base + Vector3.new(0, 17, 0)),
+            C.Silver, Enum.Material.Metal, f, 0, true)
+        local lamp = ball("Lampada_da_bateria", 7, CFrame.new(base + Vector3.new(0, 29, 0)),
+            C.Bright, Enum.Material.Neon, f, 0, false)
+        makeLight(lamp, C.Bright, 0.9, 34)
+    end
+
+    -- Cone de chama em camadas e coluna de energia ate o alto do globo.
+    for i = 1, 6 do
+        local layer = ball("Chama_em_camadas", 34 - i * 4.5,
+            CFrame.new(p + Vector3.new(0, 214 + i * 13, 0)),
+            i % 2 == 0 and C.White or C.Bright, Enum.Material.Neon, f, 0.15 + i * 0.05, false)
+        layer.CastShadow = false
+    end
+    local column = cylinder("Coluna_de_energia", 22, 420,
+        CFrame.new(p + Vector3.new(0, 440, 0)), C.Bright, Enum.Material.Neon, f, false)
+    column.Transparency = 0.8
+    column.CastShadow = false
+    local columnCore = cylinder("Nucleo_coluna_de_energia", 8, 420,
+        CFrame.new(p + Vector3.new(0, 440, 0)), C.White, Enum.Material.Neon, f, false)
+    columnCore.Transparency = 0.55
+    columnCore.CastShadow = false
+
+    -- Fagulhas subindo da chama.
+    local fire = part("Emissor_de_chama", Vector3.new(14, 2, 14),
+        CFrame.new(p + Vector3.new(0, 210, 0)), C.Bright, Enum.Material.Neon, f, 1, false)
+    fire.CastShadow = false
+    local sparks = Instance.new("ParticleEmitter")
+    sparks.Name = "Fagulhas_da_bateria"
+    sparks.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+    sparks.Color = ColorSequence.new(Color3.fromRGB(235, 255, 225), Color3.fromRGB(70, 255, 130))
+    sparks.LightEmission = 1
+    sparks.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 5), NumberSequenceKeypoint.new(1, 0)})
+    sparks.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1)})
+    sparks.Lifetime = NumberRange.new(2, 4)
+    sparks.Rate = 35
+    sparks.Speed = NumberRange.new(10, 20)
+    sparks.SpreadAngle = Vector2.new(20, 20)
+    sparks.EmissionDirection = Enum.NormalId.Top
+    sparks.Acceleration = Vector3.new(0, 6, 0)
+    sparks.Parent = fire
+
+    -- Esferas de energia orbitando a bateria (animadas em tempo real).
+    for i = 1, 6 do
+        local orb = ball("Orbe_orbital_bateria", 14, CFrame.new(p),
+            i % 2 == 0 and C.White or C.Bright, Enum.Material.Neon, f, 0, false)
+        orb.CastShadow = false
+        if i % 2 == 0 then makeLight(orb, C.Bright, 0.8, 30) end
+        batteryOrbs[#batteryOrbs + 1] = {
+            part = orb,
+            phase = i * math.pi / 3,
+            speed = 0.55 + (i % 3) * 0.12,
+            radius = 92 + (i % 2) * 16,
+            tiltX = (i - 3.5) * 0.22,
+            tiltZ = (i % 3 - 1) * 0.35,
+            center = (BATTERY_POSITION - CENTER) + Vector3.new(0, 112, 0),
+        }
+    end
+
     label(f, "BATERIA CENTRAL | OA", p + Vector3.new(0, 222, -65), 110, 18)
 end
 
@@ -1165,7 +1428,7 @@ local function buildCivicFacilities()
         local terminal = ball("Terminal_de_comando", 9,
             CFrame.new(pos + Vector3.new(0, 18, -25)), C.Bright, Enum.Material.Neon, b, 0, false)
         addPrompt(terminal, "Acessar", "Centro de comando", function()
-            print("[OA V9.3.6] Centro de comando acessado.")
+            print("[OA FINAL] Centro de comando acessado.")
         end)
     end
 
@@ -1193,7 +1456,7 @@ local function buildCivicFacilities()
         local archivePrompt = part("Totem_informativo_museu", Vector3.new(5, 12, 5),
             CFrame.new(pos + Vector3.new(0, 13, -43)), C.Metal, Enum.Material.Metal, b, 0, true)
         addPrompt(archivePrompt, "Explorar", "Museu dos Guardioes", function()
-            print("[OA V9.3.6] Museu dos Guardioes acessado.")
+            print("[OA FINAL] Museu dos Guardioes acessado.")
         end)
     end
 end
@@ -1220,6 +1483,24 @@ local function buildTower(position, height, index, parent)
     part("Corpo_superior", Vector3.new(topWidth, height * 0.42, topWidth),
         CFrame.new(position + Vector3.new(0, 18 + height * 0.79, 0)),
         C.Metal, Enum.Material.Metal, f, 0, true)
+
+    -- Fachadas envidracadas em cada face e antena de topo.
+    for face = 0, 3 do
+        local faceCF = CFrame.new(position) * CFrame.Angles(0, face * math.pi / 2, 0)
+        local lowerGlass = part("Faixa_de_vidro_inferior", Vector3.new(baseWidth * 0.5, height * 0.46, 0.8),
+            faceCF * CFrame.new(0, 18 + height * 0.29, -(baseWidth / 2 + 0.3)),
+            C.Glass, Enum.Material.Glass, f, 0.35, false)
+        lowerGlass.CastShadow = false
+        local upperGlass = part("Faixa_de_vidro_superior", Vector3.new(topWidth * 0.5, height * 0.32, 0.8),
+            faceCF * CFrame.new(0, 18 + height * 0.79, -(topWidth / 2 + 0.3)),
+            C.Glass, Enum.Material.Glass, f, 0.3, false)
+        upperGlass.CastShadow = false
+    end
+    cylinder("Antena_da_torre", 3, 34,
+        CFrame.new(position + Vector3.new(0, height + 40, 0)), C.Silver, Enum.Material.Metal, f, false)
+    local spireTip = ball("Ponta_da_antena", 6,
+        CFrame.new(position + Vector3.new(0, height + 58, 0)), C.Bright, Enum.Material.Neon, f, 0, false)
+    if index % 2 == 0 then makeLight(spireTip, C.Bright, 0.8, 30) end
 
     -- Quatro montantes externos revelam a logica estrutural.
     for i = 1, 4 do
@@ -1417,12 +1698,277 @@ end
 --========================================================
 -- RECONSTRUCAO TRANSACIONAL
 --========================================================
+--========================================================
+-- ATMOSFERA INTERNA: PARTICULAS E FEIXES DE LUZ
+--========================================================
+local function buildInteriorAtmosphere()
+    local f = folder("01D_ATMOSFERA_INTERNA")
+    local volume = part("Volume_de_particulas", Vector3.new(1100, 260, 1100),
+        CFrame.new(CENTER + Vector3.new(0, 150, 0)), C.Bright, Enum.Material.SmoothPlastic, f, 1, false)
+    volume.CastShadow = false
+
+    local motes = Instance.new("ParticleEmitter")
+    motes.Name = "Particulas_de_energia"
+    motes.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+    motes.Color = ColorSequence.new(Color3.fromRGB(120, 255, 170), Color3.fromRGB(200, 255, 120))
+    motes.LightEmission = 1
+    motes.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 0),
+        NumberSequenceKeypoint.new(0.5, 2.2), NumberSequenceKeypoint.new(1, 0)})
+    motes.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 1),
+        NumberSequenceKeypoint.new(0.2, 0.25), NumberSequenceKeypoint.new(0.8, 0.25),
+        NumberSequenceKeypoint.new(1, 1)})
+    motes.Lifetime = NumberRange.new(6, 11)
+    motes.Rate = 40
+    motes.Speed = NumberRange.new(1, 4)
+    motes.SpreadAngle = Vector2.new(180, 180)
+    motes.Acceleration = Vector3.new(0, 1.2, 0)
+    motes.RotSpeed = NumberRange.new(-30, 30)
+    motes.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+    motes.Parent = volume
+
+    local pollen = Instance.new("ParticleEmitter")
+    pollen.Name = "Poeira_luminosa"
+    pollen.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+    pollen.Color = ColorSequence.new(Color3.fromRGB(235, 255, 235))
+    pollen.LightEmission = 0.6
+    pollen.Size = NumberSequence.new(1.1)
+    pollen.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 1),
+        NumberSequenceKeypoint.new(0.5, 0.5), NumberSequenceKeypoint.new(1, 1)})
+    pollen.Lifetime = NumberRange.new(10, 16)
+    pollen.Rate = 25
+    pollen.Speed = NumberRange.new(0.5, 2)
+    pollen.SpreadAngle = Vector2.new(180, 180)
+    pollen.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+    pollen.Parent = volume
+
+    -- Feixes de luz verticais, bem translucidos, em volta da cidade.
+    for i = 1, 8 do
+        local a = (i - 1) * math.pi / 4 + math.pi / 8
+        local radius = i % 2 == 0 and 330 or 470
+        local shaft = cylinder("Feixe_de_luz", 38, 520,
+            CFrame.new(CENTER + Vector3.new(math.cos(a) * radius, 260, math.sin(a) * radius)),
+            C.Bright, Enum.Material.Neon, f, false)
+        shaft.Transparency = 0.94
+        shaft.CastShadow = false
+    end
+end
+
+
+--========================================================
+-- OA FINAL | FUNDACAO, ORBITA E SUPERFICIE EXPANDIDAS
+--========================================================
+local function buildUnderCityMegaStructure()
+    local f = folder("02A_FUNDACAO_COLOSSAL_DA_CIDADE")
+
+    -- Camadas escalonadas sob a cidade: casco, anel tecnico e quilha.
+    cylinder("Casco_inferior_escalonado", 1160, 22,
+        CFrame.new(CENTER + Vector3.new(0, -66, 0)), C.DarkStone, Enum.Material.Metal, f, false)
+    cylinder("Disco_tecnico_inferior", 930, 14,
+        CFrame.new(CENTER + Vector3.new(0, -96, 0)), C.Metal, Enum.Material.Metal, f, false)
+    cylinder("Plataforma_de_distribuicao", 690, 16,
+        CFrame.new(CENTER + Vector3.new(0, -128, 0)), C.DarkGreen, Enum.Material.Metal, f, false)
+    cylinder("Quilha_central", 280, 20,
+        CFrame.new(CENTER + Vector3.new(0, -166, 0)), C.DarkStone, Enum.Material.Metal, f, false)
+
+    local levels = {
+        {r=560, y=-82, t=8, c=C.Gold},
+        {r=430, y=-184, t=7, c=C.Silver},
+        {r=300, y=-286, t=6, c=C.Green},
+        {r=160, y=-390, t=5, c=C.Bright},
+    }
+    for i, v in ipairs(levels) do
+        buildRing("Trelica_inferior_" .. i, CENTER, v.r, v.t, v.y, v.c, 64, f,
+            i == 4 and Enum.Material.Neon or Enum.Material.Metal)
+    end
+
+    -- Nervuras inclinadas e contraventamentos radiais.
+    for i = 1, 16 do
+        local a = (i - 1) * math.pi * 2 / 16
+        local b = a + math.pi / 16
+        local p1 = CENTER + Vector3.new(math.cos(a)*560, -82, math.sin(a)*560)
+        local p2 = CENTER + Vector3.new(math.cos(b)*430, -184, math.sin(b)*430)
+        local p3 = CENTER + Vector3.new(math.cos(a)*300, -286, math.sin(a)*300)
+        local p4 = CENTER + Vector3.new(math.cos(b)*160, -390, math.sin(b)*160)
+        beam("Nervura_estrutural_externa", p1, p2, 12, C.DarkStone, f)
+        beam("Nervura_estrutural_media", p2, p3, 9, C.Silver, f)
+        beam("Nervura_estrutural_interna", p3, p4, 7, C.Metal, f)
+        beam("Contravento_radial", p1, p3, 4, C.Gold, f)
+        beam("Contravento_interno", p2, p4, 4, C.Green, f)
+    end
+
+    -- Doze pilares diagonais e docas técnicas suspensas.
+    for i = 1, 12 do
+        local a = (i - 1) * math.pi * 2 / 12
+        local upper = CENTER + Vector3.new(math.cos(a)*610, -62, math.sin(a)*610)
+        local lower = CENTER + Vector3.new(math.cos(a)*245, -330, math.sin(a)*245)
+        beam("Pilar_colossal_inclinado", upper, lower, 23, C.DarkGreen, f)
+        ball("Junta_mecanica_colossal", 28, CFrame.new(lower), C.Gold,
+            Enum.Material.Metal, f, 0, false)
+        local lamp = neon("Sinalizador_de_carga", Vector3.new(6, 18, 6),
+            CFrame.new(lower + Vector3.new(0, 20, 0)), C.Bright, f)
+        if i % 2 == 0 then makeLight(lamp, C.Bright, 0.5, 28) end
+    end
+
+    for i = 1, 8 do
+        local a = (i - 1) * math.pi / 4
+        local pos = CENTER + Vector3.new(math.cos(a)*440, -224, math.sin(a)*440)
+        cylinder("Doca_de_manutencao", 70, 18, CFrame.new(pos),
+            C.DarkStone, Enum.Material.Metal, f, false)
+        cylinder("Aro_luminoso_doca", 78, 4, CFrame.new(pos + Vector3.new(0, 12, 0)),
+            C.Bright, Enum.Material.Neon, f, false)
+        part("Modulo_de_servico", Vector3.new(62, 34, 82),
+            CFrame.new(pos + Vector3.new(0, -28, 0)), C.Metal, Enum.Material.Metal, f, true)
+    end
+
+    cylinder("Coluna_do_reator_inferior", 110, 170,
+        CFrame.new(CENTER + Vector3.new(0, -390, 0)), C.DarkStone, Enum.Material.Metal, f, false)
+    cylinder("Aro_do_reator_inferior", 170, 10,
+        CFrame.new(CENTER + Vector3.new(0, -472, 0)), C.Gold, Enum.Material.Metal, f, false)
+    local core = ball("Nucleo_do_reator_inferior", 76,
+        CFrame.new(CENTER + Vector3.new(0, -520, 0)), C.Bright, Enum.Material.Neon, f, 0, false)
+    makeLight(core, C.Bright, 1.5, 100)
+end
+
+local function buildOrbitalInfrastructure()
+    local f = folder("01E_INFRAESTRUTURA_ORBITAL")
+    local radius = GLOBE_RADIUS * 1.52
+
+    -- Tres orbitas inclinadas em torno de OA.
+    for ringIndex = 1, 3 do
+        local tilt = math.rad((ringIndex - 2) * 22)
+        local r = radius + (ringIndex - 2) * 105
+        local previous = nil
+        for i = 0, 63 do
+            local a = i * math.pi * 2 / 64
+            local point = CENTER + Vector3.new(math.cos(a)*r,
+                math.sin(a)*r*math.sin(tilt), math.sin(a)*r*math.cos(tilt))
+            if previous then
+                local segment = beam("Segmento_anel_orbital", previous, point,
+                    ringIndex == 2 and 5 or 3,
+                    ringIndex == 2 and C.Bright or C.Gold, f)
+                if segment then segment.Material = Enum.Material.Neon end
+            end
+            previous = point
+        end
+    end
+
+    -- Quatro estações de vigilância e dez satélites decorativos.
+    for i = 1, 4 do
+        local a = (i - 1) * math.pi / 2 + math.pi / 4
+        local direction = Vector3.new(math.cos(a), (i % 2 == 0) and 0.18 or -0.18, math.sin(a)).Unit
+        local pos = CENTER + direction * (GLOBE_RADIUS * 1.72)
+        ball("Nucleo_estacao_orbital", 72, CFrame.new(pos), C.DarkGreen,
+            Enum.Material.Metal, f, 0, false)
+        cylinder("Aro_estacao_orbital", 126, 8, CFrame.new(pos),
+            C.Silver, Enum.Material.Metal, f, false)
+        local beacon = neon("Farol_estacao", Vector3.new(18, 18, 18),
+            CFrame.new(pos + direction * 48), C.Bright, f)
+        makeLight(beacon, C.Bright, 1, 75)
+        beam("Braco_estacao_orbital", pos, CENTER + direction * (GLOBE_RADIUS * 1.12),
+            9, C.Metal, f)
+    end
+
+    for i = 1, 10 do
+        local a = (i - 1) * math.pi * 2 / 10
+        local y = (i % 2 == 0) and 250 or -250
+        local pos = CENTER + Vector3.new(math.cos(a)*GLOBE_RADIUS*1.9, y,
+            math.sin(a)*GLOBE_RADIUS*1.9)
+        local body = part("Satelite_de_patrulha", Vector3.new(34, 16, 48),
+            CFrame.lookAt(pos, CENTER), C.Silver, Enum.Material.Metal, f, 0, false)
+        part("Painel_solar_esquerdo", Vector3.new(48, 2, 22),
+            body.CFrame * CFrame.new(-42, 0, 0), C.DarkGreen, Enum.Material.Metal, f, false)
+        part("Painel_solar_direito", Vector3.new(48, 2, 22),
+            body.CFrame * CFrame.new(42, 0, 0), C.DarkGreen, Enum.Material.Metal, f, false)
+    end
+end
+
+local function buildGlobeSurfaceEnhancements()
+    local f = folder("01D_DETALHES_DE_SUPERFICIE")
+    -- Pequenos marcadores em quatro latitudes reforçam a leitura de cartografia planetária.
+    for band = 1, 4 do
+        local latitude = math.rad(-48 + band * 24)
+        local ringRadius = GLOBE_RADIUS * math.cos(latitude)
+        local y = GLOBE_RADIUS * math.sin(latitude)
+        for i = 1, 48 do
+            local a = (i - 1) * math.pi * 2 / 48
+            local pos = CENTER + Vector3.new(math.cos(a)*ringRadius, y, math.sin(a)*ringRadius)
+            local marker = ball("Marco_cartografico", 5, CFrame.new(pos),
+                C.Bright, Enum.Material.Neon, f, 0.35, false)
+            marker.CastShadow = false
+            tagOuter(marker, 0.35)
+        end
+    end
+
+    -- Pequenos pontos de relevo visual espalhados na superfície esférica.
+    local rng = Random.new(1942)
+    for i = 1, 28 do
+        local y = rng:NextNumber(-0.78, 0.78)
+        local a = rng:NextNumber(0, math.pi * 2)
+        local h = math.sqrt(1 - y*y)
+        local direction = Vector3.new(math.cos(a)*h, y, math.sin(a)*h)
+        local pos = CENTER + direction * (GLOBE_RADIUS + 2)
+        local mark = ball("Marca_de_relevo", rng:NextNumber(55, 105),
+            CFrame.lookAt(pos, pos + direction), C.Green, Enum.Material.SmoothPlastic, f, 0.4, false)
+        mark.Size = Vector3.new(rng:NextNumber(75, 145), rng:NextNumber(35, 85), 3)
+        mark.CastShadow = false
+        tagOuter(mark, 0.4)
+    end
+end
+
+
+
+--========================================================
+-- SISTEMA ESTELAR DE OA | DOIS SOIS DISTANTES
+--========================================================
+local function buildTwinSuns()
+    local f = folder("01F_SISTEMA_ESTELAR")
+
+    local function createSun(name, offset, diameter, color, coronaColor, brightness, range)
+        local center = CENTER + offset
+        local sun = ball(name, diameter, CFrame.new(center), color, Enum.Material.Neon, f, 0, false)
+        sun.CastShadow = false
+        local corona = ball(name .. "_Corona", diameter * 1.24, CFrame.new(center),
+            coronaColor, Enum.Material.Neon, f, 0.82, false)
+        corona.CastShadow = false
+        local halo = ball(name .. "_Halo", diameter * 1.62, CFrame.new(center),
+            coronaColor, Enum.Material.Neon, f, 0.94, false)
+        halo.CastShadow = false
+        buildRing(name .. "_Anel_Equatorial", center, diameter * 0.78, 3, 0,
+            coronaColor, 48, f, Enum.Material.Neon)
+        buildRing(name .. "_Anel_Inclinado", center, diameter * 0.92, 2, diameter * 0.12,
+            color, 48, f, Enum.Material.Neon)
+        makeLight(sun, color, brightness, range)
+    end
+
+    createSun("Sol_Principal_de_Oa", Vector3.new(-4300, 1850, -5200), 520,
+        Color3.fromRGB(255, 224, 145), Color3.fromRGB(255, 174, 85), 2.2, 180)
+    createSun("Sol_Secundario_de_Oa", Vector3.new(6100, 2850, 4300), 350,
+        Color3.fromRGB(190, 225, 255), Color3.fromRGB(105, 175, 255), 1.35, 135)
+
+    local markers = {
+        Vector3.new(-2600, 1050, -3150), Vector3.new(3600, 1750, 2500),
+        Vector3.new(-1700, -450, -2050), Vector3.new(2500, 650, 1850),
+    }
+    for i, offset in ipairs(markers) do
+        local beacon = ball("Baliza_de_navegacao_estelar_" .. i, 22,
+            CFrame.new(CENTER + offset), i % 2 == 0 and C.Bright or C.Gold,
+            Enum.Material.Neon, f, 0.08, false)
+        beacon.CastShadow = false
+        if i % 2 == 0 then makeLight(beacon, C.Bright, 0.55, 45) end
+    end
+end
+
+
 local BUILD_STEPS = {
     {"Globo e atmosfera", buildGlobe},
     {"Estrutura inferior do planeta", buildPlanetaryUnderside},
     {"Campo de protecao visual", buildProtectionField},
     {"Identificador distante OA", buildDistantPlanetBeacon},
+    {"Detalhes de superficie do globo", buildGlobeSurfaceEnhancements},
+    {"Infraestrutura orbital", buildOrbitalInfrastructure},
+    {"Sistema estelar de dois sois", buildTwinSuns},
     {"Centro planetario", buildCentralHub},
+    {"Fundacao colossal da cidade", buildUnderCityMegaStructure},
     {"Citadel", buildCitadel},
     {"Arquivos centrais", buildArchives},
     {"Prisao e telhado hibrido", buildPrison},
@@ -1434,6 +1980,7 @@ local BUILD_STEPS = {
     {"Hangar orbital", buildOrbitalHangar},
     {"Mapa holografico", buildHolographicMap},
     {"Centro de comando e museu", buildCivicFacilities},
+    {"Atmosfera interna", buildInteriorAtmosphere},
     {"Detalhes urbanos", buildUrbanDetails},
 }
 
@@ -1447,6 +1994,12 @@ local function buildOA(onProgress)
     staging.Parent = workspace
 
     local previousMap = Map
+    local previousOuter = OUTER_PARTS
+    local previousOrbs = batteryOrbs
+    local previousCoreLight = batteryCoreLight
+    OUTER_PARTS = {}
+    batteryOrbs = {}
+    batteryCoreLight = nil
     Map = staging
     PART_COUNT = 0
     BUILDING_COUNT = 0
@@ -1485,6 +2038,7 @@ local function buildOA(onProgress)
         local olderMap = workspace:FindFirstChild(OLDER_MAP_NAME)
         if olderMap and olderMap.Parent then olderMap:Destroy() end
         Map = staging
+        lastAppliedFade = -1 -- forca reaplicar a transparencia da pele externa
         BUILDING = false
         return true, string.format("OA V%s pronta | %d pecas | %d edificios.",
             VERSION, PART_COUNT, BUILDING_COUNT)
@@ -1493,11 +2047,14 @@ local function buildOA(onProgress)
     -- Rollback: preserva a versao anterior se a construcao falhar.
     if staging and staging.Parent then staging:Destroy() end
     Map = oldMap or previousMap
+    OUTER_PARTS = previousOuter
+    batteryOrbs = previousOrbs
+    batteryCoreLight = previousCoreLight
     CELL_DOORS = {}
     DOOR_STATES = {}
     LOCKDOWN = false
     BUILDING = false
-    warn("[OA V9.3.6] Reconstrucao cancelada; rollback executado:\n" .. tostring(err))
+    warn("[OA FINAL] Reconstrucao cancelada; rollback executado:\n" .. tostring(err))
     return false, tostring(err)
 end
 
@@ -1621,7 +2178,7 @@ Layout.Parent = Content
 local Status = Instance.new("TextLabel")
 Status.Size = UDim2.new(1, -4, 0, 42)
 Status.BackgroundColor3 = Color3.fromRGB(20, 45, 35)
-Status.Text = "OA V9.3.6 | Inicializando"
+Status.Text = "OA FINAL | Inicializando"
 Status.TextColor3 = C.Bright
 Status.TextSize = 12
 Status.Font = Enum.Font.Gotham
@@ -1779,6 +2336,9 @@ makeButton("LIMPAR PLANETA", 3, function()
     local older = workspace:FindFirstChild(OLDER_MAP_NAME)
     if older then older:Destroy() end
     Map = nil
+    OUTER_PARTS = {}
+    batteryOrbs = {}
+    batteryCoreLight = nil
     CELL_DOORS = {}
     DOOR_STATES = {}
     LOCKDOWN = false
@@ -1803,18 +2363,31 @@ end)
 
 makeButton("RESTAURAR CAMERA", 6, restorePlayerCamera)
 
+-- Atalho local para atravessar a casca e entrar no planeta.
+makeButton("ENTRAR EM OA", 7, function()
+    if BUILDING then setStatus("Aguarde a construcao.") return end
+    if not Map or not Map.Parent then setStatus("Construa OA primeiro.") return end
+    local character = Player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then setStatus("Personagem indisponivel.") return end
+    root.AssemblyLinearVelocity = Vector3.zero
+    root.CFrame = CFrame.new(CENTER + Vector3.new(0, 8, -150))
+    restorePlayerCamera()
+    setStatus("Voce entrou em OA.")
+end)
+
 local Info = Instance.new("TextLabel")
 Info.Size = UDim2.new(1, -4, 0, 45)
 Info.LayoutOrder = 9
 Info.BackgroundTransparency = 1
-Info.Text = "PLANETA DOS GUARDIOES\nOA V9.3.6 | SISTEMA LOCAL"
+Info.Text = "PLANETA DOS GUARDIOES\nOA FINAL | SISTEMA LOCAL"
 Info.TextColor3 = C.LightStone
 Info.TextSize = 11
 Info.Font = Enum.Font.Gotham
 Info.Parent = Content
 
 --========================================================
--- ATMOSFERA VERDE LOCAL E GPS EM TEMPO REAL
+-- ATMOSFERA VERDE LOCAL, PELE EXTERNA E GPS EM TEMPO REAL
 --========================================================
 local greenColor = Instance.new("ColorCorrectionEffect")
 greenColor.Name = "OA_V93_GreenAtmosphere"
@@ -1828,15 +2401,77 @@ greenColor.Parent = Lighting
 local greenBloom = Instance.new("BloomEffect")
 greenBloom.Name = "OA_V93_GreenBloom"
 greenBloom.Enabled = false
-greenBloom.Intensity = 0.26
-greenBloom.Size = 32
+greenBloom.Intensity = 0.32
+greenBloom.Size = 38
 greenBloom.Threshold = 1.05
 greenBloom.Parent = Lighting
+
+-- Brilho do planeta visto de fora (resplendor verde da referencia).
+local planetBloom = Instance.new("BloomEffect")
+planetBloom.Name = "OA_V93_PlanetGlow"
+planetBloom.Enabled = true
+planetBloom.Intensity = 0.42
+planetBloom.Size = 48
+planetBloom.Threshold = 0.9
+planetBloom.Parent = Lighting
+
+-- Raios de sol suaves, ativos apenas dentro do globo.
+local sunRays = Instance.new("SunRaysEffect")
+sunRays.Name = "OA_V93_SunRays"
+sunRays.Enabled = false
+sunRays.Intensity = 0.11
+sunRays.Spread = 0.72
+sunRays.Parent = Lighting
+
+-- Atmosfera volumetrica verde. Se o jogo ja tem uma, ela e ajustada
+-- temporariamente e restaurada ao sair; horario e clima nao sao alterados.
+local atmosphereObject = Lighting:FindFirstChildOfClass("Atmosphere")
+local ownAtmosphere = false
+if not atmosphereObject then
+    atmosphereObject = Instance.new("Atmosphere")
+    atmosphereObject.Name = "OA_V93_Atmosphere"
+    atmosphereObject.Density = 0
+    atmosphereObject.Parent = Lighting
+    ownAtmosphere = true
+end
+local savedAtmosphere = nil
 
 local function setOAAtmosphere(enabled)
     atmosphereActive = enabled
     greenColor.Enabled = enabled
     greenBloom.Enabled = enabled
+    sunRays.Enabled = enabled
+    -- O brilho forte so existe do lado de fora do globo.
+    planetBloom.Enabled = not enabled
+
+    if enabled then
+        if not savedAtmosphere then
+            savedAtmosphere = {
+                Density = atmosphereObject.Density, Offset = atmosphereObject.Offset,
+                Color = atmosphereObject.Color, Decay = atmosphereObject.Decay,
+                Glare = atmosphereObject.Glare, Haze = atmosphereObject.Haze,
+                Ambient = Lighting.Ambient, OutdoorAmbient = Lighting.OutdoorAmbient,
+            }
+        end
+        atmosphereObject.Density = 0.28
+        atmosphereObject.Offset = 0.12
+        atmosphereObject.Color = Color3.fromRGB(150, 255, 190)
+        atmosphereObject.Decay = Color3.fromRGB(40, 140, 90)
+        atmosphereObject.Glare = 0.32
+        atmosphereObject.Haze = 1.9
+        Lighting.Ambient = savedAtmosphere.Ambient:Lerp(Color3.fromRGB(40, 110, 70), 0.3)
+        Lighting.OutdoorAmbient = savedAtmosphere.OutdoorAmbient:Lerp(Color3.fromRGB(70, 150, 100), 0.3)
+    elseif savedAtmosphere then
+        atmosphereObject.Density = savedAtmosphere.Density
+        atmosphereObject.Offset = savedAtmosphere.Offset
+        atmosphereObject.Color = savedAtmosphere.Color
+        atmosphereObject.Decay = savedAtmosphere.Decay
+        atmosphereObject.Glare = savedAtmosphere.Glare
+        atmosphereObject.Haze = savedAtmosphere.Haze
+        Lighting.Ambient = savedAtmosphere.Ambient
+        Lighting.OutdoorAmbient = savedAtmosphere.OutdoorAmbient
+        savedAtmosphere = nil
+    end
 end
 
 local function updateLocalSystems()
@@ -1862,6 +2497,39 @@ local function updateLocalSystems()
 end
 
 runtimeConnections[#runtimeConnections + 1] = RunService.RenderStepped:Connect(updateLocalSystems)
+
+-- Pele externa: opaca de fora, dissolve suavemente quando a camera entra no globo.
+runtimeConnections[#runtimeConnections + 1] = RunService.RenderStepped:Connect(function(dt)
+    local camera = workspace.CurrentCamera
+    if not camera then return end
+    local cameraInside = (camera.CFrame.Position - CENTER).Magnitude < GLOBE_RADIUS * 0.985
+    local target = cameraInside and 1 or 0
+    outerFade = outerFade + (target - outerFade) * math.min(1, dt * 6)
+    if math.abs(target - outerFade) < 0.01 then outerFade = target end
+    if outerFade ~= lastAppliedFade then
+        lastAppliedFade = outerFade
+        applyOuterFade(outerFade)
+    end
+
+end)
+
+-- Bateria Central: orbes em orbita e nucleo pulsante.
+runtimeConnections[#runtimeConnections + 1] = RunService.RenderStepped:Connect(function()
+    if not Map or not Map.Parent then return end
+    local now = os.clock()
+    if batteryCoreLight and batteryCoreLight.Parent then
+        batteryCoreLight.Brightness = 3.2 + math.sin(now * 2.2) * 0.9
+    end
+    for _, orb in ipairs(batteryOrbs) do
+        if orb.part.Parent then
+            local angle = now * orb.speed + orb.phase
+            local offset = CFrame.Angles(orb.tiltX, 0, orb.tiltZ)
+                * Vector3.new(math.cos(angle) * orb.radius, 0, math.sin(angle) * orb.radius)
+            orb.part.Position = CENTER + (orb.center + offset) * CITY_SCALE
+        end
+    end
+end)
+
 GUI.Destroying:Connect(function()
     for _, connection in ipairs(runtimeConnections) do
         if connection and connection.Connected then connection:Disconnect() end
@@ -1869,6 +2537,9 @@ GUI.Destroying:Connect(function()
     setOAAtmosphere(false)
     if greenColor then greenColor:Destroy() end
     if greenBloom then greenBloom:Destroy() end
+    if planetBloom then planetBloom:Destroy() end
+    if sunRays then sunRays:Destroy() end
+    if ownAtmosphere and atmosphereObject then atmosphereObject:Destroy() end
 end)
 
 --========================================================
@@ -1915,7 +2586,7 @@ end)
 --========================================================
 -- INICIALIZACAO
 --========================================================
-setStatus("Construindo OA V9.3.6...")
+setStatus("Construindo OA FINAL...")
 task.spawn(function()
     local ok, message = buildOA(function(stepName, index, total)
         setStatus(string.format("Construindo: %s (%d/%d)", stepName, index, total))
@@ -1929,18 +2600,22 @@ task.spawn(function()
 end)
 
 print("========================================")
-print(" OA V9.3.6 | PLANETA DOS GUARDIOES")
+print(" OA FINAL | PLANETA DOS GUARDIOES")
 print(" Execucao local independente habilitada.")
 print(" Reconstrucao transacional habilitada.")
 print(" GPS sem seta, distancia em metros e atmosfera verde local.")
-print(" Campo de protecao visual e identificador distante OA habilitados.")
+print(" Globo opaco verde visto de fora; cidade visivel apenas ao entrar.")
+print(" Nevoa, nuvens, destrocos, estacoes orbitais e berco inferior adicionados.")
 print(" Arquitetura urbana revisada, coberturas e placas apoiadas.")
 print(" Centro de Comando e Museu dos Guardioes adicionados.")
-print(" Identificador distante OA e campo visual de protecao adicionados.")
 print(" Bateria Central, telhado hibrido e Citadel monumental adicionados.")
 print(" Edificios com interiores modulares.")
 print(" Citadel, alas e sala de conferencia com coberturas fechadas.")
 print(" Placas com suportes, passarelas com pilares e mobiliario urbano.")
+print(" Globo cartoon: olhos seguem a camera, piscam, sorriso e chapeu de festa.")
+print(" Atmosfera interna volumetrica, particulas e feixes de luz.")
+print(" Bateria Central com orbes, coluna de energia e nucleo pulsante.")
+print(" Edificios com colunas de canto, janelas laterais e coroa; torres com antena.")
 print(" Lockdown e portas interativas locais.")
 print(" Horario e clima do jogo preservados.")
 print("========================================")
