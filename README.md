@@ -30,7 +30,7 @@ local Lighting = game:GetService("Lighting")
 local Player = Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
 
-local VERSION = "FINAL"
+local VERSION = "RP_HUB_2_2_MENU_PROFISSIONAL"
 local MAP_NAME = "OA_LIVING_FINAL"
 local LEGACY_MAP_NAME = "OA_LIVING_V10"
 local PREVIOUS_MINOR_PATCH_MAP_NAME = "OA_LIVING_V9_3_5"
@@ -41,7 +41,7 @@ local PREVIOUS_MAP_NAME = "OA_LIVING_V9_3"
 local PREVIOUS_PATCH_MAP_NAME = "OA_LIVING_V9_3_1"
 local PREVIOUS_MINOR_MAP_NAME = "OA_LIVING_V9_2"
 local OLDER_MAP_NAME = "OA_LIVING_V9_1"
-local GUI_NAME = "OA_CONTROL_PANEL_FINAL"
+local GUI_NAME = "OA_CONTROL_PANEL_2_2_PRO"
 local LEGACY_GUI_NAME = "OA_CONTROL_PANEL_V10"
 local PREVIOUS_MINOR_PATCH_GUI_NAME = "OA_CONTROL_PANEL_V9_3_5"
 local PREVIOUS_MINOR_PATCH_3_GUI_NAME = "OA_CONTROL_PANEL_V9_3_4"
@@ -63,6 +63,8 @@ local CITY_ROOTS = {
     ["08_SKYLINE"] = true, ["09_TRANSPORTE"] = true,
     ["09B_HANGAR_ORBITAL"] = true, ["10_DETALHES_URBANOS"] = true,
     ["11_CENTRO_COMANDO"] = true, ["12_MUSEU_GUARDIOES"] = true,
+    ["13_SEGURANCA_PERIMETRAL"] = true,
+    ["14_ESPACOS_RP"] = true, ["15_URBAN_DESIGN"] = true,
 }
 
 local BUILDING = false
@@ -80,6 +82,11 @@ local PRISON_POSITION = CENTER + Vector3.new(365, 0, -180)
 local runtimeConnections = {}
 local atmosphereActive = false
 local gpsDestinationIndex = 1
+local openTransportMenu = nil
+local setStatus = nil
+local oaNameplateVisible = true
+local securityDrones = {}
+local securityNetworkEnabled = true
 
 -- Pecas da "pele externa" do planeta (casca, nevoa, nuvens, campo).
 -- Somem suavemente quando a camera entra no globo.
@@ -529,6 +536,7 @@ local function buildDistantPlanetBeacon()
     billboard.MaxDistance = math.huge
     billboard.Size = UDim2.fromOffset(260, 76)
     billboard.StudsOffset = Vector3.new(0, 0, 0)
+    billboard.Enabled = oaNameplateVisible
     billboard.Parent = anchor
 
     local title = Instance.new("TextLabel")
@@ -999,6 +1007,8 @@ local function buildCitadel()
         CFrame.new(spireBase + Vector3.new(0, 91, 0)), C.Bright, Enum.Material.Neon, f, 0, false)
     makeLight(spire, C.Bright, 1.8, 54)
     label(f, "CITADEL | CONSELHO DOS GUARDIOES", pos + Vector3.new(0, 145, -110), 150, 22)
+
+    -- A antiga estrutura de elevador foi removida: ela nao era confiavel neste jogo.
 end
 
 --========================================================
@@ -1184,143 +1194,133 @@ local function buildPrison()
 end
 
 --========================================================
--- BATERIA CENTRAL DA OA | INSPIRACAO VISUAL DOS QUADRINHOS
+-- BATERIA CENTRAL OA 2.1 | MONUMENTO LANTERNA
+-- Totalmente procedural: nao depende de importar arquivos RBXM.
 --========================================================
 local function buildCentralBattery()
     local f = folder("06_BATERIA_CENTRAL")
     local p = BATTERY_POSITION
 
-    cylinder("Plataforma_bateria", 190, 10, CFrame.new(p + Vector3.new(0, 5, 0)),
-        C.DarkStone, Enum.Material.Metal, f, true)
-    buildRing("Aro_externo_bateria", p, 91, 5, 11, C.Green, 56, f)
-    buildRing("Aro_interno_bateria", p, 73, 3, 13, C.Bright, 48, f, Enum.Material.Neon)
+    -- Plataforma monumental e degraus concentricos.
+    cylinder("Plataforma_Monumental", 360, 14,
+        CFrame.new(p + Vector3.new(0, 7, 0)), C.DarkStone, Enum.Material.Metal, f, true)
+    cylinder("Degrau_Externo", 326, 8,
+        CFrame.new(p + Vector3.new(0, 18, 0)), C.Stone, Enum.Material.Marble, f, true)
+    cylinder("Degrau_Intermediario", 286, 7,
+        CFrame.new(p + Vector3.new(0, 25, 0)), C.DarkStone, Enum.Material.Metal, f, true)
+    cylinder("Base_Elevada", 238, 18,
+        CFrame.new(p + Vector3.new(0, 38, 0)), C.Metal, Enum.Material.Metal, f, true)
 
-    -- Base inferior alargada e garganta metalica sob a esfera.
-    cylinder("Base_inferior_alargada", 88, 30,
-        CFrame.new(p + Vector3.new(0, 27, 0)), C.Metal, Enum.Material.Metal, f, true)
-    cylinder("Aro_base_verde", 94, 5,
-        CFrame.new(p + Vector3.new(0, 13, 0)), C.DarkGreen, Enum.Material.Metal, f, true)
-    cylinder("Colar_superior", 65, 18,
-        CFrame.new(p + Vector3.new(0, 49, 0)), C.Silver, Enum.Material.Metal, f, true)
+    buildRing("Aro_Dourado_Externo", p, 174, 5, 22, C.Gold, 80, f)
+    buildRing("Aro_Verde_Externo", p, 157, 4, 27, C.Bright, 80, f, Enum.Material.Neon)
+    buildRing("Aro_Interno", p, 119, 4, 49, C.Green, 72, f)
 
-    -- Esfera externa verde com nucleo claro visivel na frente.
-    local shell = ball("Carcaca_esferica", 116,
-        CFrame.new(p + Vector3.new(0, 112, 0)), C.Green, Enum.Material.Metal, f, 0, false)
-    shell.Reflectance = 0.08
-    local core = ball("Nucleo_luminoso", 82,
-        CFrame.new(p + Vector3.new(0, 112, -39)), C.White, Enum.Material.Neon, f, 0, false)
-    batteryCoreLight = makeLight(core, Color3.fromRGB(190, 255, 190), 3.2, 95)
-    local coreRim = cylinder("Aro_frontal_nucleo", 94, 5,
-        CFrame.new(p + Vector3.new(0, 112, -40)) * CFrame.Angles(math.rad(90), 0, 0),
-        C.DarkGreen, Enum.Material.Metal, f, false)
-    coreRim.Transparency = 0.12
+    -- Pedestal central.
+    cylinder("Pedestal_Inferior", 154, 32,
+        CFrame.new(p + Vector3.new(0, 64, 0)), C.DarkGreen, Enum.Material.Metal, f, true)
+    cylinder("Colar_Dourado", 166, 7,
+        CFrame.new(p + Vector3.new(0, 83, 0)), C.Gold, Enum.Material.Metal, f, false)
+    cylinder("Colar_Superior", 126, 14,
+        CFrame.new(p + Vector3.new(0, 94, 0)), C.Silver, Enum.Material.Metal, f, true)
 
-    -- Bracos laterais de sustentacao, semelhantes ao desenho de referencia.
+    -- Corpo principal: grande esfera verde com nucleo frontal luminoso.
+    local shell = ball("Corpo_Energetico", 188,
+        CFrame.new(p + Vector3.new(0, 190, 0)), C.Green, Enum.Material.Metal, f, 0, false)
+    shell.Reflectance = 0.12
+    local shellBand = cylinder("Cintura_Esferica", 194, 9,
+        CFrame.new(p + Vector3.new(0, 190, 0)), C.DarkGreen, Enum.Material.Metal, f, false)
+    shellBand.Transparency = 0.12
+
+    local core = ball("Nucleo_Luminoso", 132,
+        CFrame.new(p + Vector3.new(0, 190, -68)), C.White, Enum.Material.Neon, f, 0, false)
+    batteryCoreLight = makeLight(core, Color3.fromRGB(190, 255, 190), 4.0, 145)
+    local coreRim = cylinder("Aro_Frontal_Nucleo", 150, 8,
+        CFrame.new(p + Vector3.new(0, 190, -70)) * CFrame.Angles(math.rad(90), 0, 0),
+        C.Gold, Enum.Material.Metal, f, false)
+    coreRim.Transparency = 0.08
+
+    -- Estrutura de sustentacao lateral.
     for side = -1, 1, 2 do
-        local armPos = p + Vector3.new(side * 66, 105, 0)
-        part("Braco_lateral_bateria", Vector3.new(9, 72, 9),
-            CFrame.new(armPos) * CFrame.Angles(0, 0, math.rad(side * -18)),
+        local arm = part("Braco_Estrutural", Vector3.new(18, 152, 22),
+            CFrame.new(p + Vector3.new(side * 104, 178, 0))
+                * CFrame.Angles(0, 0, math.rad(side * -16)),
             C.Silver, Enum.Material.Metal, f, 0, true)
-        ball("Junta_lateral", 17, CFrame.new(p + Vector3.new(side * 59, 139, 0)),
+        local joint = ball("Junta_Estrutural", 32,
+            CFrame.new(p + Vector3.new(side * 90, 248, 0)),
+            C.Gold, Enum.Material.Metal, f, 0, false)
+        makeLight(joint, C.Bright, 0.35, 28)
+        part("Reforco_Braco", Vector3.new(11, 100, 13),
+            CFrame.new(p + Vector3.new(side * 78, 177, -9))
+                * CFrame.Angles(0, 0, math.rad(side * -12)),
             C.DarkGreen, Enum.Material.Metal, f, 0, false)
     end
 
-    -- Gargalo superior e pequena chama geometrica verde (sem textura externa).
-    cylinder("Gargalo_superior", 48, 24,
-        CFrame.new(p + Vector3.new(0, 176, 0)), C.DarkGreen, Enum.Material.Metal, f, true)
-    cylinder("Aro_gargalo", 54, 5,
-        CFrame.new(p + Vector3.new(0, 190, 0)), C.Green, Enum.Material.Metal, f, false)
-    for i = 1, 5 do
-        local angle = (i - 1) * (math.pi * 2 / 5)
-        local flamePos = p + Vector3.new(math.cos(angle) * 15, 207 + (i % 2) * 8, math.sin(angle) * 15)
-        local flame = ball("Chama_energetica", 13 - (i % 2) * 3,
-            CFrame.new(flamePos), C.Bright, Enum.Material.Neon, f, 0.12, false)
-        if i == 1 then makeLight(flame, C.Bright, 1.1, 35) end
+    -- Gargalo e coroa superior.
+    cylinder("Gargalo", 88, 34,
+        CFrame.new(p + Vector3.new(0, 300, 0)), C.DarkGreen, Enum.Material.Metal, f, true)
+    cylinder("Aro_Coroa", 112, 9,
+        CFrame.new(p + Vector3.new(0, 321, 0)), C.Gold, Enum.Material.Metal, f, false)
+    cylinder("Emissor_Superior", 66, 32,
+        CFrame.new(p + Vector3.new(0, 341, 0)), C.Green, Enum.Material.Metal, f, false)
+    local crown = ball("Nucleo_Superior", 54,
+        CFrame.new(p + Vector3.new(0, 365, 0)), C.Bright, Enum.Material.Neon, f, 0, false)
+    makeLight(crown, C.Bright, 1.4, 58)
+
+    -- Aletas radiais de energia em volta do nucleo.
+    for i = 1, 8 do
+        local a = (i - 1) * math.pi / 4
+        local x, z = math.cos(a), math.sin(a)
+        part("Aleta_Radial", Vector3.new(8, 72, 34),
+            CFrame.new(p + Vector3.new(x * 82, 190, z * 82))
+                * CFrame.Angles(0, -a, math.rad(x * 8)),
+            C.Gold, Enum.Material.Metal, f, 0, false)
+        local marker = ball("Ponto_Energia_Radial", 12,
+            CFrame.new(p + Vector3.new(x * 125, 190, z * 125)),
+            C.Bright, Enum.Material.Neon, f, 0, false)
+        makeLight(marker, C.Bright, 0.45, 24)
     end
 
-    local statusPanel = neon("Painel_status_bateria", Vector3.new(38, 12, 2),
-        CFrame.new(p + Vector3.new(0, 25, -52)), C.Bright, f)
-    makeLight(statusPanel, C.Bright, 0.7, 25)
-
-    -- Degraus alargados sob a plataforma.
-    cylinder("Degrau_base_externo", 270, 4, CFrame.new(p + Vector3.new(0, 2, 0)),
-        C.DarkStone, Enum.Material.Marble, f, true)
-    cylinder("Degrau_base_interno", 235, 7, CFrame.new(p + Vector3.new(0, 3.5, 0)),
-        C.Stone, Enum.Material.Marble, f, true)
-    buildRing("Aro_dourado_degrau", p, 133, 3, 4.6, C.Gold, 64, f)
-
-    -- Raios luminosos no piso da plataforma.
+    -- Raios decorativos no piso e iluminacao perimetral.
+    for i = 1, 16 do
+        local a = (i - 1) * math.pi / 8
+        local ray = neon("Raio_Piso", Vector3.new(86, 1.2, 3.2),
+            CFrame.new(p + Vector3.new(math.cos(a) * 96, 29, math.sin(a) * 96))
+                * CFrame.Angles(0, -a, 0), C.Bright, f)
+        ray.CanCollide = false
+    end
     for i = 1, 12 do
         local a = (i - 1) * math.pi / 6
-        neon("Raio_da_plataforma", Vector3.new(70, 0.5, 2.4),
-            CFrame.new(p + Vector3.new(math.cos(a) * 52, 10.3, math.sin(a) * 52)) * CFrame.Angles(0, -a, 0),
-            C.Bright, f)
+        local pos = p + Vector3.new(math.cos(a) * 185, 0, math.sin(a) * 185)
+        local pillar = part("Pilar_Perimetral", Vector3.new(5, 30, 5),
+            CFrame.new(pos + Vector3.new(0, 24, 0)), C.Silver, Enum.Material.Metal, f, 0, true)
+        local lamp = ball("Luz_Pilar", 11,
+            CFrame.new(pos + Vector3.new(0, 41, 0)), C.Bright, Enum.Material.Neon, f, 0, false)
+        makeLight(lamp, C.Bright, 0.55, 26)
     end
 
-    -- Postes de luz ao redor da plataforma.
+    -- Painel frontal de identificacao.
+    local statusPanel = neon("Painel_Status_Bateria", Vector3.new(78, 18, 3),
+        CFrame.new(p + Vector3.new(0, 62, -126)), C.Bright, f)
+    makeLight(statusPanel, C.Bright, 0.8, 36)
+    label(f, "BATERIA CENTRAL | OA", p + Vector3.new(0, 414, 0), 150, 24)
+
+    -- Orbes orbitais animados pelo sistema existente da OA.
     for i = 1, 8 do
-        local a = (i - 1) * math.pi / 4 + math.pi / 8
-        local base = p + Vector3.new(math.cos(a) * 106, 0, math.sin(a) * 106)
-        part("Poste_da_bateria", Vector3.new(2.4, 20, 2.4), CFrame.new(base + Vector3.new(0, 17, 0)),
-            C.Silver, Enum.Material.Metal, f, 0, true)
-        local lamp = ball("Lampada_da_bateria", 7, CFrame.new(base + Vector3.new(0, 29, 0)),
-            C.Bright, Enum.Material.Neon, f, 0, false)
-        makeLight(lamp, C.Bright, 0.9, 34)
-    end
-
-    -- Cone de chama em camadas e coluna de energia ate o alto do globo.
-    for i = 1, 6 do
-        local layer = ball("Chama_em_camadas", 34 - i * 4.5,
-            CFrame.new(p + Vector3.new(0, 214 + i * 13, 0)),
-            i % 2 == 0 and C.White or C.Bright, Enum.Material.Neon, f, 0.15 + i * 0.05, false)
-        layer.CastShadow = false
-    end
-    local column = cylinder("Coluna_de_energia", 22, 420,
-        CFrame.new(p + Vector3.new(0, 440, 0)), C.Bright, Enum.Material.Neon, f, false)
-    column.Transparency = 0.8
-    column.CastShadow = false
-    local columnCore = cylinder("Nucleo_coluna_de_energia", 8, 420,
-        CFrame.new(p + Vector3.new(0, 440, 0)), C.White, Enum.Material.Neon, f, false)
-    columnCore.Transparency = 0.55
-    columnCore.CastShadow = false
-
-    -- Fagulhas subindo da chama.
-    local fire = part("Emissor_de_chama", Vector3.new(14, 2, 14),
-        CFrame.new(p + Vector3.new(0, 210, 0)), C.Bright, Enum.Material.Neon, f, 1, false)
-    fire.CastShadow = false
-    local sparks = Instance.new("ParticleEmitter")
-    sparks.Name = "Fagulhas_da_bateria"
-    sparks.Texture = "rbxasset://textures/particles/sparkles_main.dds"
-    sparks.Color = ColorSequence.new(Color3.fromRGB(235, 255, 225), Color3.fromRGB(70, 255, 130))
-    sparks.LightEmission = 1
-    sparks.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 5), NumberSequenceKeypoint.new(1, 0)})
-    sparks.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1)})
-    sparks.Lifetime = NumberRange.new(2, 4)
-    sparks.Rate = 35
-    sparks.Speed = NumberRange.new(10, 20)
-    sparks.SpreadAngle = Vector2.new(20, 20)
-    sparks.EmissionDirection = Enum.NormalId.Top
-    sparks.Acceleration = Vector3.new(0, 6, 0)
-    sparks.Parent = fire
-
-    -- Esferas de energia orbitando a bateria (animadas em tempo real).
-    for i = 1, 6 do
-        local orb = ball("Orbe_orbital_bateria", 14, CFrame.new(p),
+        local orb = ball("Orbe_Orbital_Bateria", 14,
+            CFrame.new(p + Vector3.new(0, 245, 0)),
             i % 2 == 0 and C.White or C.Bright, Enum.Material.Neon, f, 0, false)
         orb.CastShadow = false
-        if i % 2 == 0 then makeLight(orb, C.Bright, 0.8, 30) end
+        makeLight(orb, C.Bright, 0.5, 30)
         batteryOrbs[#batteryOrbs + 1] = {
             part = orb,
-            phase = i * math.pi / 3,
-            speed = 0.55 + (i % 3) * 0.12,
-            radius = 92 + (i % 2) * 16,
-            tiltX = (i - 3.5) * 0.22,
-            tiltZ = (i % 3 - 1) * 0.35,
-            center = (BATTERY_POSITION - CENTER) + Vector3.new(0, 112, 0),
+            phase = i * math.pi / 4,
+            speed = 0.35 + (i % 3) * 0.09,
+            radius = 225 + (i % 2) * 35,
+            tiltX = (i - 4.5) * 0.07,
+            tiltZ = (i % 3 - 1) * 0.16,
+            center = Vector3.new(0, 245, 0),
         }
     end
-
-    label(f, "BATERIA CENTRAL | OA", p + Vector3.new(0, 222, -65), 110, 18)
 end
 
 --========================================================
@@ -1428,7 +1428,11 @@ local function buildCivicFacilities()
         local terminal = ball("Terminal_de_comando", 9,
             CFrame.new(pos + Vector3.new(0, 18, -25)), C.Bright, Enum.Material.Neon, b, 0, false)
         addPrompt(terminal, "Acessar", "Centro de comando", function()
-            print("[OA FINAL] Centro de comando acessado.")
+            if openTransportMenu then
+                openTransportMenu()
+            elseif setStatus then
+                setStatus("Centro de comando disponivel para roleplay.")
+            end
         end)
     end
 
@@ -1551,8 +1555,8 @@ local function buildTransport()
     local core = ball("Nucleo", 24, CFrame.new(pos + Vector3.new(0, 38, 0)),
         C.Bright, Enum.Material.Neon, f, 0, false)
     makeLight(core, C.Bright, 2, 55)
-    addPrompt(core, "Acessar", "Estacao de transporte", function()
-        print("[OA V9.3] Estacao de transporte acessada.")
+    addPrompt(core, "Explorar", "Pontos de encontro OA", function()
+        if openTransportMenu then openTransportMenu() end
     end)
 
     for i = 1, 4 do
@@ -1693,6 +1697,322 @@ local function buildUrbanDetails()
             CFrame.new(pos + Vector3.new(15, 4, 0)),
             C.Metal, Enum.Material.Metal, f, 0, true)
     end
+end
+
+--========================================================
+-- ESPACOS DE CONVIVENCIA | AREAS LIVRES PARA ROLEPLAY
+--========================================================
+local function buildRoleplaySpaces()
+    local f = folder("14_ESPACOS_RP")
+
+    local function makeRPSeat(parent, seatName, worldPosition, yaw)
+        local scaledPosition = CENTER + (worldPosition - CENTER) * CITY_SCALE
+        local seat = Instance.new("Seat")
+        seat.Name = seatName
+        seat.Size = Vector3.new(8, 1.2, 8) * CITY_SCALE
+        seat.CFrame = CFrame.new(scaledPosition) * CFrame.Angles(0, yaw or 0, 0)
+        seat.Anchored = true
+        seat.CanCollide = true
+        seat.CanTouch = true
+        seat.CanQuery = true
+        seat.Color = C.DarkGreen
+        seat.Material = Enum.Material.Fabric
+        seat.TopSurface = Enum.SurfaceType.Smooth
+        seat.BottomSurface = Enum.SurfaceType.Smooth
+        seat.Parent = parent
+        PART_COUNT += 1
+
+        addPrompt(seat, "Sentar", seatName, function()
+            local character = Player.Character
+            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+            if humanoid and seat.Parent then
+                seat:Sit(humanoid)
+                if setStatus then setStatus("Voce esta sentado. Aproveite o espaco de convivencia.") end
+            end
+        end)
+
+        local backPosition = worldPosition + CFrame.Angles(0, yaw or 0, 0):VectorToWorldSpace(Vector3.new(0, 4.5, 4))
+        part("Encosto_assento_RP", Vector3.new(8, 9, 2),
+            CFrame.new(backPosition) * CFrame.Angles(0, yaw or 0, 0),
+            C.DarkGreen, Enum.Material.Fabric, parent, 0, true)
+        return seat
+    end
+
+    local function addRPDisplay(parent, name, worldPosition, width, height, titleText, bodyText, yaw)
+        local board = part(name, Vector3.new(width, height, 1.4),
+            CFrame.new(worldPosition) * CFrame.Angles(0, yaw or 0, 0),
+            C.DeepGreen, Enum.Material.Metal, parent, 0, true)
+        local surface = Instance.new("SurfaceGui")
+        surface.Name = name .. "_Surface"
+        surface.Face = Enum.NormalId.Front
+        surface.AlwaysOnTop = false
+        surface.LightInfluence = 0.15
+        surface.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+        surface.PixelsPerStud = 24
+        surface.Parent = board
+
+        local background = Instance.new("Frame")
+        background.Size = UDim2.fromScale(1, 1)
+        background.BackgroundColor3 = Color3.fromRGB(5, 28, 20)
+        background.BackgroundTransparency = 0.08
+        background.BorderSizePixel = 0
+        background.Parent = surface
+
+        local title = Instance.new("TextLabel")
+        title.Size = UDim2.new(1, -12, 0.48, 0)
+        title.Position = UDim2.new(0, 6, 0, 2)
+        title.BackgroundTransparency = 1
+        title.Text = titleText
+        title.TextColor3 = C.Bright
+        title.TextScaled = true
+        title.Font = Enum.Font.GothamBold
+        title.Parent = background
+
+        local body = Instance.new("TextLabel")
+        body.Size = UDim2.new(1, -14, 0.43, 0)
+        body.Position = UDim2.new(0, 7, 0.53, 0)
+        body.BackgroundTransparency = 1
+        body.Text = bodyText
+        body.TextColor3 = C.White
+        body.TextScaled = true
+        body.Font = Enum.Font.Gotham
+        body.TextWrapped = true
+        body.Parent = background
+        return board
+    end
+
+    -- Cafe dos Guardioes, junto ao setor de jardins e residencias.
+    do
+        local cafe = folder("Cafe_dos_Guardioes", f)
+        local pos = CENTER + Vector3.new(-260, 0, 470)
+        cylinder("Deck_circular_cafe", 156, 7,
+            CFrame.new(pos + Vector3.new(0, 3.5, 0)), C.DarkStone, Enum.Material.Marble, cafe, true)
+        buildRing("Aro_dourado_cafe", pos, 72, 3, 8, C.Gold, 48, cafe)
+        buildRing("Aro_verde_cafe", pos, 64, 2, 8.5, C.Bright, 48, cafe, Enum.Material.Neon)
+
+        -- Cobertura aberta com quatro pilares, deixando o espaco visivel e acessivel.
+        for sx = -1, 1, 2 do
+            for sz = -1, 1, 2 do
+                part("Pilar_cafe", Vector3.new(5, 42, 5),
+                    CFrame.new(pos + Vector3.new(sx * 49, 23, sz * 32)),
+                    C.Silver, Enum.Material.Metal, cafe, 0, true)
+            end
+        end
+        part("Cobertura_cafe", Vector3.new(112, 5, 78),
+            CFrame.new(pos + Vector3.new(0, 45, 0)), C.DarkGreen, Enum.Material.Metal, cafe, 0, true)
+        part("Forro_luminoso_cafe", Vector3.new(88, 1, 54),
+            CFrame.new(pos + Vector3.new(0, 42, 0)), C.Bright, Enum.Material.Neon, cafe, 0.25, false)
+        local cafeLight = neon("Luminaria_central_cafe", Vector3.new(12, 2, 12),
+            CFrame.new(pos + Vector3.new(0, 39, 0)), C.Gold, cafe)
+        makeLight(cafeLight, C.Gold, 0.85, 38)
+
+        part("Balcao_cafe", Vector3.new(76, 7, 13),
+            CFrame.new(pos + Vector3.new(0, 10.5, -27)), C.Metal, Enum.Material.Metal, cafe, 0, true)
+        part("Tampo_balcao_cafe", Vector3.new(80, 2, 16),
+            CFrame.new(pos + Vector3.new(0, 15, -27)), C.LightStone, Enum.Material.Marble, cafe, 0, true)
+        local menuBoard = neon("Painel_cardapio_cafe", Vector3.new(42, 17, 1.2),
+            CFrame.new(pos + Vector3.new(0, 31, -36)), C.DarkGreen, cafe)
+        label(cafe, "CAFE DOS GUARDIOES", pos + Vector3.new(0, 54, -42), 96, 13)
+        addPrompt(menuBoard, "Consultar", "Cafe dos Guardioes", function()
+            if setStatus then setStatus("Cafe dos Guardioes: ponto de encontro livre para roleplay.") end
+        end)
+        addRPDisplay(cafe, "Quadro_de_boas_vindas_cafe",
+            pos + Vector3.new(0, 26, 42), 48, 18,
+            "CAFE DOS GUARDIOES", "CONVERSAS  |  DESCANSO  |  CONVIVENCIA", math.pi)
+
+        local tablePositions = {
+            Vector3.new(-27, 0, 20), Vector3.new(27, 0, 20),
+        }
+        for index, offset in ipairs(tablePositions) do
+            part("Mesa_cafe", Vector3.new(24, 3, 18),
+                CFrame.new(pos + offset + Vector3.new(0, 9, 0)), C.Metal, Enum.Material.Metal, cafe, 0, true)
+            for seatIndex = 1, 3 do
+                local angle = (seatIndex - 1) * (math.pi * 2 / 3) + (index - 1) * 0.4
+                local seatOffset = offset + Vector3.new(math.cos(angle) * 22, 9, math.sin(angle) * 19)
+                makeRPSeat(cafe, "Assento_cafe_" .. index .. "_" .. seatIndex, pos + seatOffset, -angle)
+            end
+        end
+        makeRPSeat(cafe, "Assento_balcao_1", pos + Vector3.new(-19, 9, -8), math.pi)
+        makeRPSeat(cafe, "Assento_balcao_2", pos + Vector3.new(0, 9, -8), math.pi)
+        makeRPSeat(cafe, "Assento_balcao_3", pos + Vector3.new(19, 9, -8), math.pi)
+        makeRPSeat(cafe, "Assento_varanda_1", pos + Vector3.new(-54, 9, 20), math.pi / 2)
+        makeRPSeat(cafe, "Assento_varanda_2", pos + Vector3.new(54, 9, 20), -math.pi / 2)
+
+        for side = -1, 1, 2 do
+            local planter = cylinder("Jardineira_cafe", 22, 3,
+                CFrame.new(pos + Vector3.new(side * 65, 4, 0)), C.Soil, Enum.Material.Ground, cafe, true)
+            for plant = 1, 3 do
+                local leafOffset = Vector3.new(side * 65 + (plant - 2) * 4, 12, (plant - 2) * 4)
+                ball("Folhagem_cafe", 10, CFrame.new(pos + leafOffset),
+                    C.DarkGreen, Enum.Material.Grass, cafe, 0, false)
+            end
+        end
+    end
+
+    -- Mirante de convivencia com bancos voltados para o horizonte e o planeta.
+    do
+        local lookout = folder("Mirante_de_Convivencia", f)
+        local pos = CENTER + Vector3.new(300, 0, 480)
+        cylinder("Plataforma_mirante", 190, 8,
+            CFrame.new(pos + Vector3.new(0, 4, 0)), C.DarkStone, Enum.Material.Marble, lookout, true)
+        buildRing("Aro_perimetral_mirante", pos, 88, 4, 10, C.Gold, 64, lookout)
+        buildRing("Aro_luminoso_mirante", pos, 78, 2, 11, C.Bright, 64, lookout, Enum.Material.Neon)
+
+        for i = 1, 8 do
+            local angle = (i - 1) * math.pi / 4
+            local offset = Vector3.new(math.cos(angle) * 58, 0, math.sin(angle) * 58)
+            makeRPSeat(lookout, "Banco_mirante_" .. i, pos + offset + Vector3.new(0, 9, 0), -angle)
+            local marker = neon("Balizador_mirante", Vector3.new(3, 7, 3),
+                CFrame.new(pos + offset + Vector3.new(0, 13, 0)), C.Bright, lookout)
+            if i % 2 == 0 then makeLight(marker, C.Bright, 0.45, 18) end
+        end
+
+        cylinder("Fonte_mirante_base", 38, 5,
+            CFrame.new(pos + Vector3.new(0, 10, 0)), C.Metal, Enum.Material.Metal, lookout, false)
+        local fountain = ball("Nucleo_fonte_mirante", 18,
+            CFrame.new(pos + Vector3.new(0, 26, 0)), C.Bright, Enum.Material.Neon, lookout, 0.12, false)
+        makeLight(fountain, C.Bright, 1.15, 34)
+        addPrompt(fountain, "Interagir", "Fonte do mirante", function()
+            if setStatus then setStatus("Mirante de convivencia: local tranquilo para conversar e fazer RP.") end
+        end)
+
+        -- Telescopio cenografico interativo para observacao e conversas.
+        local telescopeBase = pos + Vector3.new(31, 10, -24)
+        part("Base_telescopio", Vector3.new(10, 8, 10),
+            CFrame.new(telescopeBase), C.DarkStone, Enum.Material.Metal, lookout, 0, true)
+        part("Coluna_telescopio", Vector3.new(4, 15, 4),
+            CFrame.new(telescopeBase + Vector3.new(0, 10, 0)), C.Silver, Enum.Material.Metal, lookout, 0, true)
+        local tubeStart = telescopeBase + Vector3.new(0, 16, 0)
+        local tubeEnd = tubeStart + Vector3.new(0, 15, -18)
+        local tubeMid = (tubeStart + tubeEnd) / 2
+        local telescopeTube = part("Tubo_telescopio", Vector3.new(7, 7, (tubeEnd - tubeStart).Magnitude),
+            CFrame.lookAt(tubeMid, tubeEnd), C.Silver, Enum.Material.Metal, lookout, 0, true)
+        local lens = neon("Lente_telescopio", Vector3.new(8, 8, 2),
+            CFrame.new(tubeEnd), C.Bright, lookout)
+        makeLight(lens, C.Bright, 0.5, 16)
+        addPrompt(lens, "Observar", "Telescopio do mirante", function()
+            if setStatus then setStatus("Telescopio do mirante: ponto de observacao cenografico para roleplay.") end
+        end)
+
+        local photoMarker = neon("Marco_fotografico_mirante", Vector3.new(42, 1.2, 4),
+            CFrame.new(pos + Vector3.new(0, 8, 73)), C.Gold, lookout)
+        photoMarker.Transparency = 0.18
+        label(lookout, "OA | MIRANTE DE CONVIVENCIA", pos + Vector3.new(0, 42, -91), 132, 16)
+        addRPDisplay(lookout, "Placa_mirante",
+            pos + Vector3.new(0, 25, -83), 70, 15,
+            "MIRANTE OA", "OBSERVAR  |  CONVERSAR  |  RELAXAR", 0)
+    end
+
+    -- Anfiteatro comunitario no jardim central: espaco aberto para reunioes,
+    -- encontros e cenas de roleplay, sem objetivos ou recompensas.
+    do
+        local amphitheater = folder("Anfiteatro_dos_Guardioes", f)
+        local pos = CENTER + Vector3.new(0, 0, 420)
+        buildRing("Anel_externo_anfiteatro", pos, 164, 3, 7, C.Gold, 64, amphitheater)
+        buildRing("Anel_luminoso_anfiteatro", pos, 151, 2, 8, C.Bright, 64, amphitheater, Enum.Material.Neon)
+
+        local stagePosition = pos + Vector3.new(0, 5, -150)
+        cylinder("Palco_anfiteatro", 58, 5,
+            CFrame.new(stagePosition), C.DarkStone, Enum.Material.Marble, amphitheater, true)
+        buildRing("Aro_palco_anfiteatro", stagePosition, 27, 2, 4, C.Gold, 40, amphitheater, Enum.Material.Neon)
+        local lantern = ball("Emblema_luminoso_anfiteatro", 18,
+            CFrame.new(stagePosition + Vector3.new(0, 23, 0)), C.Bright, Enum.Material.Neon, amphitheater, 0.05, false)
+        makeLight(lantern, C.Bright, 1.0, 28)
+        addPrompt(lantern, "Interagir", "Anfiteatro dos Guardioes", function()
+            if setStatus then setStatus("Anfiteatro dos Guardioes: espaco livre para reunioes, discursos e encontros de roleplay.") end
+        end)
+
+        for i = 1, 10 do
+            local angle = (i - 1) * (math.pi * 2 / 10)
+            local seatPosition = pos + Vector3.new(math.cos(angle) * 164, 9, math.sin(angle) * 164)
+            makeRPSeat(amphitheater, "Assento_anfiteatro_" .. i,
+                seatPosition, math.pi / 2 - angle)
+        end
+
+        for i = 1, 6 do
+            local angle = (i - 1) * (math.pi * 2 / 6)
+            local pillarPosition = pos + Vector3.new(math.cos(angle) * 178, 0, math.sin(angle) * 178)
+            part("Pilar_luminoso_anfiteatro", Vector3.new(3, 25, 3),
+                CFrame.new(pillarPosition + Vector3.new(0, 12.5, 0)),
+                C.Silver, Enum.Material.Metal, amphitheater, 0, true)
+            local cap = neon("Luz_pilar_anfiteatro", Vector3.new(5, 2, 5),
+                CFrame.new(pillarPosition + Vector3.new(0, 26, 0)), C.Bright, amphitheater)
+            makeLight(cap, C.Bright, 0.45, 20)
+        end
+
+        local notice = addRPDisplay(amphitheater, "Quadro_anfiteatro",
+            pos + Vector3.new(0, 34, -186), 76, 22,
+            "ANFITEATRO DOS GUARDIOES", "REUNIOES  |  CERIMONIAS  |  CONVIVENCIA", math.pi)
+        addPrompt(notice, "Consultar", "Espaco comunitario", function()
+            if setStatus then setStatus("Anfiteatro OA: use os assentos e o palco para criar suas proprias cenas de roleplay.") end
+        end)
+    end
+end
+
+--========================================================
+-- SEGURANCA PERIMETRAL: DRONES DE SEGURANCA VISUAIS E LOCAIS
+--========================================================
+local function buildSecurityNetwork()
+    local f = folder("13_SEGURANCA_PERIMETRAL")
+    securityDrones = {}
+    securityNetworkEnabled = true
+
+    for i = 1, 4 do
+        local phase = (i - 1) * (math.pi / 2)
+        local startOffset = Vector3.new(math.cos(phase) * 410, 175, math.sin(phase) * 410)
+        local startPosition = CENTER + startOffset
+        local model = Instance.new("Model")
+        model.Name = string.format("Drone_Seguranca_%02d", i)
+        model.Parent = f
+
+        local body = part("Nucleo_do_drone", Vector3.new(12, 4, 18),
+            CFrame.new(startPosition), C.DarkGreen, Enum.Material.Metal, model, 0, false)
+        body.CastShadow = false
+        model.PrimaryPart = body
+
+        local nose = part("Nariz_sensor", Vector3.new(7, 2, 5),
+            CFrame.new(startPosition + Vector3.new(0, 0, -9)), C.Silver, Enum.Material.Metal, model, 0, false)
+        nose.CastShadow = false
+        local wingL = part("Aleta_esquerda", Vector3.new(18, 1.5, 5),
+            CFrame.new(startPosition + Vector3.new(-13, 0, 2)), C.Metal, Enum.Material.Metal, model, 0, false)
+        local wingR = part("Aleta_direita", Vector3.new(18, 1.5, 5),
+            CFrame.new(startPosition + Vector3.new(13, 0, 2)), C.Metal, Enum.Material.Metal, model, 0, false)
+        wingL.CastShadow = false
+        wingR.CastShadow = false
+
+        local core = ball("Luz_de_identificacao", 5,
+            CFrame.new(startPosition + Vector3.new(0, 3, 0)), C.Bright, Enum.Material.Neon, model, 0, false)
+        core.CastShadow = false
+        makeLight(core, C.Bright, 0.8, 24)
+        for side = -1, 1, 2 do
+            local lamp = neon("Luz_lateral", Vector3.new(2.5, 1, 3),
+                CFrame.new(startPosition + Vector3.new(side * 8, 0, 5)), C.Gold, model)
+            lamp.CastShadow = false
+        end
+        local scanner = neon("Scanner_inferior", Vector3.new(1.2, 22, 1.2),
+            CFrame.new(startPosition + Vector3.new(0, -13, 0)), C.Bright, model)
+        scanner.Transparency = 0.58
+        scanner.CastShadow = false
+        local spot = Instance.new("SpotLight")
+        spot.Name = "Sensor_de_varredura"
+        spot.Face = Enum.NormalId.Bottom
+        spot.Color = C.Bright
+        spot.Brightness = 0.65
+        spot.Range = 48
+        spot.Angle = 55
+        spot.Shadows = false
+        spot.Parent = body
+
+        securityDrones[#securityDrones + 1] = {
+            model = model,
+            phase = phase,
+            radius = 410 * CITY_SCALE,
+            altitude = 175 * CITY_SCALE,
+            speed = 0.12 + i * 0.012,
+            index = i,
+        }
+    end
+    label(f, "OA | SEGURANCA PERIMETRAL ATIVA", CENTER + Vector3.new(0, 210, 0), 130, 16)
 end
 
 --========================================================
@@ -1873,7 +2193,7 @@ local function buildOrbitalInfrastructure()
         local y = (i % 2 == 0) and 250 or -250
         local pos = CENTER + Vector3.new(math.cos(a)*GLOBE_RADIUS*1.9, y,
             math.sin(a)*GLOBE_RADIUS*1.9)
-        local body = part("Satelite_de_patrulha", Vector3.new(34, 16, 48),
+        local body = part("Satelite_orbital", Vector3.new(34, 16, 48),
             CFrame.lookAt(pos, CENTER), C.Silver, Enum.Material.Metal, f, 0, false)
         part("Painel_solar_esquerdo", Vector3.new(48, 2, 22),
             body.CFrame * CFrame.new(-42, 0, 0), C.DarkGreen, Enum.Material.Metal, f, false)
@@ -1959,6 +2279,72 @@ local function buildTwinSuns()
 end
 
 
+--========================================================
+-- MASTERPLAN 2.0 | REORGANIZACAO POS-CONSTRUCAO
+-- Move grupos inteiros sem reconstruir suas pecas internas.
+-- Os deltas abaixo ja estao na escala final da cidade (72%).
+--========================================================
+local function moveFolderContents(targetFolder, delta)
+    if not targetFolder or delta.Magnitude < 0.01 then return 0 end
+    local moved = 0
+    for _, object in ipairs(targetFolder:GetDescendants()) do
+        if object:IsA("BasePart") then
+            object.CFrame = CFrame.new(delta) * object.CFrame
+            moved += 1
+        end
+    end
+    return moved
+end
+
+local function applyUrbanMasterplan()
+    local rp = Map:FindFirstChild("14_ESPACOS_RP")
+    if rp then
+        -- Distribui os tres espacos sociais em um arco sul, com respiro entre eles.
+        moveFolderContents(rp:FindFirstChild("Cafe_dos_Guardioes"), Vector3.new(-283, 0, 82))
+        moveFolderContents(rp:FindFirstChild("Mirante_de_Convivencia"), Vector3.new(-216, 0, 265))
+        moveFolderContents(rp:FindFirstChild("Anfiteatro_dos_Guardioes"), Vector3.new(470, 0, 118))
+    end
+
+    -- Estacao e hangar ficam no arco norte/leste, afastados dos espacos de RP.
+    moveFolderContents(Map:FindFirstChild("09_TRANSPORTE"), Vector3.new(0, 0, -952))
+    moveFolderContents(Map:FindFirstChild("09B_HANGAR_ORBITAL"), Vector3.new(52, 0, -700))
+end
+
+local function buildUrbanDistrictMarkers()
+    local f = folder("15_URBAN_DESIGN")
+    local markers = {
+        {"DISTRITO CIVICO", Vector3.new(0, 0, -640), C.Gold},
+        {"DISTRITO RESIDENCIAL", Vector3.new(-640, 0, 0), C.Bright},
+        {"DISTRITO COMERCIAL", Vector3.new(640, 0, 0), C.Gold},
+        {"DISTRITO DE CONVIVENCIA", Vector3.new(0, 0, 640), C.Bright},
+    }
+    for index, entry in ipairs(markers) do
+        local name, offset, accent = entry[1], entry[2], entry[3]
+        local pos = CENTER + offset
+        local radial = Vector3.new(offset.X, 0, offset.Z).Unit
+        local tangent = Vector3.new(-radial.Z, 0, radial.X)
+        local gateFrame = CFrame.lookAt(pos + Vector3.new(0, 40, 0),
+            pos + radial + Vector3.new(0, 40, 0))
+        cylinder("Base_marco_setorial_" .. index, 92, 5,
+            CFrame.new(pos + Vector3.new(0, 2.5, 0)), C.DarkStone, Enum.Material.Marble, f, true)
+        for side = -1, 1, 2 do
+            local postPos = pos + tangent * (side * 38)
+            part("Pilar_portal_setorial_" .. index, Vector3.new(9, 42, 10),
+                CFrame.new(postPos + Vector3.new(0, 21, 0)), C.Silver, Enum.Material.Metal, f, 0, true)
+            local postLight = neon("Filete_pilar_setorial_" .. index, Vector3.new(2, 36, 2),
+                CFrame.new(postPos + Vector3.new(0, 22, 0) + radial * 5), accent, f)
+            makeLight(postLight, accent, 0.35, 20)
+        end
+        part("Viga_portal_setorial_" .. index, Vector3.new(92, 9, 12),
+            gateFrame, C.DarkGreen, Enum.Material.Metal, f, 0, true)
+        local crown = neon("Coroa_luminosa_setorial_" .. index, Vector3.new(88, 1.8, 3),
+            gateFrame * CFrame.new(0, 5.5, -6), accent, f)
+        makeLight(crown, accent, 0.5, 24)
+        label(f, "OA | " .. name, pos + Vector3.new(0, 58, 0), 112, 16)
+    end
+end
+
+
 local BUILD_STEPS = {
     {"Globo e atmosfera", buildGlobe},
     {"Estrutura inferior do planeta", buildPlanetaryUnderside},
@@ -1980,8 +2366,11 @@ local BUILD_STEPS = {
     {"Hangar orbital", buildOrbitalHangar},
     {"Mapa holografico", buildHolographicMap},
     {"Centro de comando e museu", buildCivicFacilities},
+    {"Espacos de convivencia para RP", buildRoleplaySpaces},
+    {"Seguranca perimetral e drones", buildSecurityNetwork},
     {"Atmosfera interna", buildInteriorAtmosphere},
     {"Detalhes urbanos", buildUrbanDetails},
+    {"Sinalizacao dos distritos", buildUrbanDistrictMarkers},
 }
 
 local function buildOA(onProgress)
@@ -1997,9 +2386,13 @@ local function buildOA(onProgress)
     local previousOuter = OUTER_PARTS
     local previousOrbs = batteryOrbs
     local previousCoreLight = batteryCoreLight
+    local previousPatrolDrones = securityDrones
+    local previousPatrolNetworkEnabled = securityNetworkEnabled
     OUTER_PARTS = {}
     batteryOrbs = {}
     batteryCoreLight = nil
+    securityDrones = {}
+    securityNetworkEnabled = true
     Map = staging
     PART_COUNT = 0
     BUILDING_COUNT = 0
@@ -2013,6 +2406,7 @@ local function buildOA(onProgress)
             step[2]()
             task.wait()
         end
+        applyUrbanMasterplan()
     end, debug.traceback)
 
     if success then
@@ -2040,7 +2434,7 @@ local function buildOA(onProgress)
         Map = staging
         lastAppliedFade = -1 -- forca reaplicar a transparencia da pele externa
         BUILDING = false
-        return true, string.format("OA V%s pronta | %d pecas | %d edificios.",
+        return true, string.format("OA %s pronta | %d pecas | %d edificios.",
             VERSION, PART_COUNT, BUILDING_COUNT)
     end
 
@@ -2050,6 +2444,8 @@ local function buildOA(onProgress)
     OUTER_PARTS = previousOuter
     batteryOrbs = previousOrbs
     batteryCoreLight = previousCoreLight
+    securityDrones = previousPatrolDrones
+    securityNetworkEnabled = previousPatrolNetworkEnabled
     CELL_DOORS = {}
     DOOR_STATES = {}
     LOCKDOWN = false
@@ -2091,12 +2487,13 @@ GUI.Parent = PlayerGui
 
 local Main = Instance.new("Frame")
 Main.Name = "Painel"
-Main.Size = UDim2.new(0, 320, 0, 430)
+Main.Size = UDim2.new(0, 292, 0, 398)
 Main.Position = UDim2.new(0, 12, 0, 12)
-Main.BackgroundColor3 = Color3.fromRGB(10, 23, 19)
-Main.BackgroundTransparency = 0.05
+Main.BackgroundColor3 = Color3.fromRGB(8, 20, 16)
+Main.BackgroundTransparency = 0.025
 Main.BorderSizePixel = 0
 Main.Active = true
+Main.ClipsDescendants = true
 Main.Parent = GUI
 
 local MainScale = Instance.new("UIScale")
@@ -2107,10 +2504,15 @@ local function updateResponsiveLayout()
     local camera = workspace.CurrentCamera
     if not camera then return end
     local viewport = camera.ViewportSize
-    local widthScale = math.max(0.72, math.min(1, (viewport.X - 24) / 320))
-    local heightScale = math.max(0.72, math.min(1, (viewport.Y - 24) / 430))
+    local widthScale = math.clamp((viewport.X - 24) / 292, 0.78, 1)
+    local heightScale = math.clamp((viewport.Y - 24) / 398, 0.72, 1)
     MainScale.Scale = math.min(widthScale, heightScale)
-    Main.Position = UDim2.new(0, 12, 0, 12)
+    -- Mantem o painel acessivel em telas pequenas sem ocupar o centro da tela.
+    local maxX = math.max(8, viewport.X - 300)
+    local maxY = math.max(8, viewport.Y - 406)
+    local currentX = math.clamp(Main.Position.X.Offset, 8, maxX)
+    local currentY = math.clamp(Main.Position.Y.Offset, 8, maxY)
+    Main.Position = UDim2.new(0, currentX, 0, currentY)
 end
 
 updateResponsiveLayout()
@@ -2119,49 +2521,75 @@ if workspace.CurrentCamera then
 end
 
 local mainCorner = Instance.new("UICorner")
-mainCorner.CornerRadius = UDim.new(0, 12)
+mainCorner.CornerRadius = UDim.new(0, 13)
 mainCorner.Parent = Main
 local mainStroke = Instance.new("UIStroke")
-mainStroke.Color = C.Green
-mainStroke.Thickness = 2
+mainStroke.Color = Color3.fromRGB(65, 190, 125)
+mainStroke.Thickness = 1.35
+mainStroke.Transparency = 0.12
 mainStroke.Parent = Main
 
 local Header = Instance.new("Frame")
+Header.Name = "Cabecalho"
 Header.Size = UDim2.new(1, 0, 0, 50)
-Header.BackgroundColor3 = Color3.fromRGB(13, 62, 42)
+Header.BackgroundColor3 = Color3.fromRGB(12, 55, 39)
 Header.BorderSizePixel = 0
 Header.Parent = Main
+local headerGradient = Instance.new("UIGradient")
+headerGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(18, 83, 57)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(8, 39, 29)),
+})
+headerGradient.Rotation = 0
+headerGradient.Parent = Header
 local headerCorner = Instance.new("UICorner")
 headerCorner.CornerRadius = UDim.new(0, 12)
 headerCorner.Parent = Header
 
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -55, 1, 0)
-Title.Position = UDim2.new(0, 12, 0, 0)
+Title.Size = UDim2.new(1, -62, 0, 22)
+Title.Position = UDim2.new(0, 13, 0, 5)
 Title.BackgroundTransparency = 1
-Title.Text = "OA | CONTROLE PLANETARIO"
+Title.Text = "OA  |  CONTROLE PLANETARIO"
 Title.TextColor3 = C.White
-Title.TextSize = 13
+Title.TextSize = 12
 Title.Font = Enum.Font.GothamBold
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = Header
 
+local Subtitle = Instance.new("TextLabel")
+Subtitle.Size = UDim2.new(1, -62, 0, 14)
+Subtitle.Position = UDim2.new(0, 14, 0, 27)
+Subtitle.BackgroundTransparency = 1
+Subtitle.Text = "PLANETA DOS GUARDIOES  •  LOCAL"
+Subtitle.TextColor3 = Color3.fromRGB(166, 218, 190)
+Subtitle.TextSize = 8
+Subtitle.Font = Enum.Font.GothamMedium
+Subtitle.TextXAlignment = Enum.TextXAlignment.Left
+Subtitle.Parent = Header
+
 local Minimize = Instance.new("TextButton")
-Minimize.Size = UDim2.new(0, 40, 0, 38)
-Minimize.Position = UDim2.new(1, -47, 0, 6)
-Minimize.BackgroundColor3 = C.DarkGreen
-Minimize.Text = "_"
+Minimize.Name = "Recolher"
+Minimize.Size = UDim2.new(0, 34, 0, 34)
+Minimize.Position = UDim2.new(1, -42, 0, 8)
+Minimize.BackgroundColor3 = Color3.fromRGB(25, 105, 70)
+Minimize.Text = "−"
 Minimize.TextColor3 = C.White
-Minimize.TextSize = 20
-Minimize.Font = Enum.Font.GothamBold
+Minimize.TextSize = 23
+Minimize.Font = Enum.Font.GothamMedium
+Minimize.AutoButtonColor = true
 Minimize.Parent = Header
 local minCorner = Instance.new("UICorner")
-minCorner.CornerRadius = UDim.new(0, 7)
+minCorner.CornerRadius = UDim.new(0, 9)
 minCorner.Parent = Minimize
+local minStroke = Instance.new("UIStroke")
+minStroke.Color = Color3.fromRGB(120, 230, 165)
+minStroke.Transparency = 0.55
+minStroke.Parent = Minimize
 
 local Content = Instance.new("ScrollingFrame")
-Content.Size = UDim2.new(1, -16, 1, -62)
-Content.Position = UDim2.new(0, 8, 0, 56)
+Content.Size = UDim2.new(1, -16, 1, -60)
+Content.Position = UDim2.new(0, 8, 0, 54)
 Content.BackgroundTransparency = 1
 Content.BorderSizePixel = 0
 Content.ScrollBarThickness = 4
@@ -2171,16 +2599,16 @@ Content.AutomaticCanvasSize = Enum.AutomaticSize.Y
 Content.Parent = Main
 
 local Layout = Instance.new("UIListLayout")
-Layout.Padding = UDim.new(0, 8)
+Layout.Padding = UDim.new(0, 6)
 Layout.SortOrder = Enum.SortOrder.LayoutOrder
 Layout.Parent = Content
 
 local Status = Instance.new("TextLabel")
-Status.Size = UDim2.new(1, -4, 0, 42)
+Status.Size = UDim2.new(1, -4, 0, 34)
 Status.BackgroundColor3 = Color3.fromRGB(20, 45, 35)
-Status.Text = "OA FINAL | Inicializando"
+Status.Text = "OA RP HUB 2.1 | Inicializando"
 Status.TextColor3 = C.Bright
-Status.TextSize = 12
+Status.TextSize = 10
 Status.Font = Enum.Font.Gotham
 Status.LayoutOrder = 0
 Status.Parent = Content
@@ -2188,7 +2616,7 @@ local statusCorner = Instance.new("UICorner")
 statusCorner.CornerRadius = UDim.new(0, 7)
 statusCorner.Parent = Status
 
-local function setStatus(message)
+setStatus = function(message)
     Status.Text = message
 end
 
@@ -2198,12 +2626,18 @@ local GPS_DESTINATIONS = {
     {name = "OA-01 | Bateria Central", position = BATTERY_POSITION + Vector3.new(0, 112, 0)},
     {name = "OA-02 | Prisao", position = PRISON_POSITION + Vector3.new(0, 10, 0)},
     {name = "OA-03 | Arquivos centrais", position = CENTER + Vector3.new(-370, 12, -180)},
-    {name = "OA-04 | Citadel", position = CENTER + Vector3.new(0, 12, -440)},
+    {name = "OA-04 | Cidadela", position = CENTER + Vector3.new(0, 12, -440)},
+    {name = "OA-05 | Centro de comando", position = CENTER + Vector3.new(-468, 12, -58)},
+    {name = "OA-06 | Museu dos Guardioes", position = CENTER + Vector3.new(468, 12, -58)},
+    {name = "OA-07 | Estacao central", position = CENTER + Vector3.new(0, 12, -560)},
+    {name = "OA-08 | Hangar orbital", position = CENTER + Vector3.new(520, 12, -350)},
+    {name = "OA-09 | Cafe dos Guardioes", position = CENTER + Vector3.new(-470, 12, 420)},
+    {name = "OA-10 | Mirante", position = CENTER + Vector3.new(0, 12, 610)},
+    {name = "OA-11 | Anfiteatro", position = CENTER + Vector3.new(470, 14, 420)},
 }
-
 local GPSPanel = Instance.new("Frame")
 GPSPanel.Name = "Navegacao_OA"
-GPSPanel.Size = UDim2.new(1, -4, 0, 98)
+GPSPanel.Size = UDim2.new(1, -4, 0, 94)
 GPSPanel.BackgroundColor3 = Color3.fromRGB(15, 52, 37)
 GPSPanel.BorderSizePixel = 0
 GPSPanel.LayoutOrder = 1
@@ -2243,7 +2677,7 @@ GPSCoords.TextXAlignment = Enum.TextXAlignment.Left
 GPSCoords.Parent = GPSPanel
 local GPSNext = Instance.new("TextButton")
 GPSNext.Size = UDim2.new(0, 74, 0, 22)
-GPSNext.Position = UDim2.new(1, -82, 1, -27)
+GPSNext.Position = UDim2.new(1, -82, 0, 52)
 GPSNext.BackgroundColor3 = C.DarkGreen
 GPSNext.Text = "LOCAL >"
 GPSNext.TextColor3 = C.White
@@ -2255,58 +2689,200 @@ GPSNext.Activated:Connect(function()
     GPSName.Text = GPS_DESTINATIONS[gpsDestinationIndex].name
 end)
 
+local RPReadout = Instance.new("TextLabel")
+RPReadout.Name = "ModoRoleplay"
+RPReadout.Size = UDim2.new(1, -14, 0, 18)
+RPReadout.Position = UDim2.new(0, 8, 0, 78)
+RPReadout.BackgroundTransparency = 1
+RPReadout.Text = "MODO: ROLEPLAY LIVRE"
+RPReadout.TextColor3 = C.Bright
+RPReadout.TextSize = 10
+RPReadout.Font = Enum.Font.GothamBold
+RPReadout.TextXAlignment = Enum.TextXAlignment.Left
+RPReadout.Parent = GPSPanel
+
 local function makeButton(text, order, callback)
     local button = Instance.new("TextButton")
     button.Name = text
-    button.Size = UDim2.new(1, -4, 0, 46)
+    button.Size = UDim2.new(1, -4, 0, 39)
     button.LayoutOrder = order + 1
-    button.BackgroundColor3 = Color3.fromRGB(20, 72, 48)
+    button.BackgroundColor3 = Color3.fromRGB(17, 61, 44)
     button.Text = text
     button.TextColor3 = C.White
-    button.TextSize = 12
+    button.TextSize = 11
     button.Font = Enum.Font.GothamBold
     button.AutoButtonColor = true
     button.Parent = Content
 
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
+    corner.CornerRadius = UDim.new(0, 7)
     corner.Parent = button
     local stroke = Instance.new("UIStroke")
-    stroke.Color = C.Green
-    stroke.Transparency = 0.55
+    stroke.Color = Color3.fromRGB(72, 170, 118)
+    stroke.Thickness = 1
+    stroke.Transparency = 0.72
     stroke.Parent = button
 
     button.Activated:Connect(callback)
     return button
 end
 
-local function focusOACamera()
-    local camera = workspace.CurrentCamera
-    if not camera then
-        setStatus("Camera indisponivel.")
-        return
+local function createTransportModal(titleText, entries, onChoose)
+    if not GUI or not GUI.Parent then return end
+    local existing = GUI:FindFirstChild("OA_Transport_Modal")
+    if existing then existing:Destroy() end
+
+    local overlay = Instance.new("Frame")
+    overlay.Name = "OA_Transport_Modal"
+    overlay.Size = UDim2.fromScale(1, 1)
+    overlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    overlay.BackgroundTransparency = 0.35
+    overlay.ZIndex = 40
+    overlay.Parent = GUI
+
+    local panel = Instance.new("Frame")
+    panel.Size = UDim2.new(0, 280, 0, math.min(330, 92 + #entries*43))
+    panel.Position = UDim2.fromScale(0.5, 0.5)
+    panel.AnchorPoint = Vector2.new(0.5, 0.5)
+    panel.BackgroundColor3 = Color3.fromRGB(8, 30, 22)
+    panel.BorderSizePixel = 0
+    panel.ZIndex = 41
+    panel.Parent = overlay
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 12)
+    corner.Parent = panel
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = C.Bright
+    stroke.Thickness = 1.5
+    stroke.Parent = panel
+
+    local heading = Instance.new("TextLabel")
+    heading.Size = UDim2.new(1, -20, 0, 38)
+    heading.Position = UDim2.new(0, 10, 0, 8)
+    heading.BackgroundTransparency = 1
+    heading.Text = titleText
+    heading.TextColor3 = C.Bright
+    heading.TextSize = 14
+    heading.Font = Enum.Font.GothamBold
+    heading.ZIndex = 42
+    heading.Parent = panel
+
+    local list = Instance.new("ScrollingFrame")
+    list.Size = UDim2.new(1, -20, 1, -58)
+    list.Position = UDim2.new(0, 10, 0, 48)
+    list.BackgroundTransparency = 1
+    list.BorderSizePixel = 0
+    list.ScrollBarThickness = 3
+    list.CanvasSize = UDim2.new(0, 0, 0, 0)
+    list.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    list.ZIndex = 42
+    list.Parent = panel
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 6)
+    layout.Parent = list
+
+    for index, entry in ipairs(entries) do
+        local button = Instance.new("TextButton")
+        button.Size = UDim2.new(1, -4, 0, 38)
+        button.BackgroundColor3 = Color3.fromRGB(20, 72, 48)
+        button.Text = entry.name
+        button.TextColor3 = C.White
+        button.TextSize = 11
+        button.Font = Enum.Font.GothamBold
+        button.ZIndex = 43
+        button.Parent = list
+        local buttonCorner = Instance.new("UICorner")
+        buttonCorner.CornerRadius = UDim.new(0, 7)
+        buttonCorner.Parent = button
+        button.Activated:Connect(function()
+            if overlay.Parent then overlay:Destroy() end
+            onChoose(entry, index)
+        end)
     end
-    camera.CameraType = Enum.CameraType.Scriptable
-    local cameraPosition = CENTER + Vector3.new(0, 520, 2350)
-    camera.CFrame = CFrame.lookAt(cameraPosition, CENTER)
-    camera.Focus = CFrame.new(CENTER)
-    setStatus("Camera focada no planeta OA.")
+
+    local close = Instance.new("TextButton")
+    close.Size = UDim2.new(0, 30, 0, 30)
+    close.Position = UDim2.new(1, -36, 0, 8)
+    close.BackgroundColor3 = C.DarkGreen
+    close.Text = "X"
+    close.TextColor3 = C.White
+    close.TextSize = 12
+    close.Font = Enum.Font.GothamBold
+    close.ZIndex = 44
+    close.Parent = panel
+    close.Activated:Connect(function() overlay:Destroy() end)
 end
 
-local function restorePlayerCamera()
-    local camera = workspace.CurrentCamera
+local TRANSPORT_DESTINATIONS = {
+    {name = "Centro Planetário", position = CENTER + Vector3.new(0, 18, 0)},
+    {name = "Cidadela dos Guardiões", position = CENTER + Vector3.new(0, 26, -440) * CITY_SCALE},
+    {name = "Bateria Central", position = CENTER + Vector3.new(0, 118, 0)},
+    {name = "Arquivos Centrais", position = CENTER + Vector3.new(-370, 24, -180) * CITY_SCALE},
+    {name = "Prisão de Contenção", position = PRISON_POSITION + Vector3.new(0, 18, 0)},
+    {name = "Hangar Orbital", position = CENTER + Vector3.new(0, 35, 700) * CITY_SCALE},
+    {name = "Cafe dos Guardioes", position = CENTER + Vector3.new(-260, 12, 470) * CITY_SCALE},
+    {name = "Mirante de Convivencia", position = CENTER + Vector3.new(300, 12, 480) * CITY_SCALE},
+    {name = "Anfiteatro dos Guardioes", position = CENTER + Vector3.new(0, 14, 420) * CITY_SCALE},
+    {name = "Museu dos Guardioes", position = CENTER + Vector3.new(650, 14, -80) * CITY_SCALE},
+}
+
+local function transitToDestination(destination)
     local character = Player.Character
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    if not camera then
-        setStatus("Camera indisponivel.")
-        return
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then setStatus("Personagem indisponível.") return end
+    local wasAnchored = root.Anchored
+    root.Anchored = true
+    setStatus("Rota local: " .. destination.name .. "...")
+    task.wait(0.25)
+    if root and root.Parent then
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.CFrame = CFrame.new(destination.position + Vector3.new(0, 5, 0))
+        root.Anchored = wasAnchored
     end
-    camera.CameraType = Enum.CameraType.Custom
-    if humanoid then camera.CameraSubject = humanoid end
-    setStatus("Camera do jogador restaurada.")
+    setStatus("Chegada local: " .. destination.name .. ".")
 end
 
-makeButton("FOCAR CAMERA EM OA", 1, focusOACamera)
+openTransportMenu = function()
+    createTransportModal("EXPLORAR OA | PONTOS DE ENCONTRO", TRANSPORT_DESTINATIONS, function(destination)
+        transitToDestination(destination)
+    end)
+end
+
+local function toggleSecurityNetwork()
+    securityNetworkEnabled = not securityNetworkEnabled
+    local visibleModifier = securityNetworkEnabled and 0 or 1
+    for _, droneData in ipairs(securityDrones) do
+        local model = droneData.model
+        if model and model.Parent then
+            for _, descendant in ipairs(model:GetDescendants()) do
+                if descendant:IsA("BasePart") then
+                    descendant.LocalTransparencyModifier = visibleModifier
+                elseif descendant:IsA("Light") then
+                    descendant.Enabled = securityNetworkEnabled
+                end
+            end
+        end
+    end
+    setStatus(securityNetworkEnabled and "Seguranca perimetral ativada." or "Seguranca perimetral em modo silencioso.")
+end
+
+local nameplateButton = nil
+local function toggleOANameplate()
+    oaNameplateVisible = not oaNameplateVisible
+    if Map and Map.Parent then
+        local beaconFolder = Map:FindFirstChild("01C_IDENTIFICADOR_DISTANTE")
+        local anchor = beaconFolder and beaconFolder:FindFirstChild("OA_Beacon_Anchor")
+        local billboard = anchor and anchor:FindFirstChild("OA_Distant_Nameplate")
+        if billboard then billboard.Enabled = oaNameplateVisible end
+    end
+    if nameplateButton then
+        nameplateButton.Text = oaNameplateVisible and "OCULTAR NOME DA OA" or "MOSTRAR NOME DA OA"
+    end
+    setStatus(oaNameplateVisible and "Identificador OA visivel." or "Identificador OA oculto.")
+end
+
+nameplateButton = makeButton("OCULTAR NOME DA OA", 1, toggleOANameplate)
+nameplateButton.Name = "AlternarNomeOA"
 
 makeButton("RECONSTRUIR PLANETA", 2, function()
     if BUILDING then setStatus("Construcao ja em andamento.") return end
@@ -2339,6 +2915,8 @@ makeButton("LIMPAR PLANETA", 3, function()
     OUTER_PARTS = {}
     batteryOrbs = {}
     batteryCoreLight = nil
+    securityDrones = {}
+    securityNetworkEnabled = true
     CELL_DOORS = {}
     DOOR_STATES = {}
     LOCKDOWN = false
@@ -2361,10 +2939,18 @@ makeButton("RESTAURAR PORTAS", 5, function()
     setStatus("Portas restauradas.")
 end)
 
-makeButton("RESTAURAR CAMERA", 6, restorePlayerCamera)
+makeButton("EXPLORAR OA", 6, function()
+    if not Map or not Map.Parent then setStatus("Construa OA primeiro.") return end
+    if openTransportMenu then openTransportMenu() end
+end)
+
+makeButton("SEGURANCA PERIMETRAL", 7, function()
+    if not Map or not Map.Parent then setStatus("Construa OA primeiro.") return end
+    toggleSecurityNetwork()
+end)
 
 -- Atalho local para atravessar a casca e entrar no planeta.
-makeButton("ENTRAR EM OA", 7, function()
+makeButton("ENTRAR EM OA", 8, function()
     if BUILDING then setStatus("Aguarde a construcao.") return end
     if not Map or not Map.Parent then setStatus("Construa OA primeiro.") return end
     local character = Player.Character
@@ -2372,7 +2958,6 @@ makeButton("ENTRAR EM OA", 7, function()
     if not root then setStatus("Personagem indisponivel.") return end
     root.AssemblyLinearVelocity = Vector3.zero
     root.CFrame = CFrame.new(CENTER + Vector3.new(0, 8, -150))
-    restorePlayerCamera()
     setStatus("Voce entrou em OA.")
 end)
 
@@ -2380,7 +2965,7 @@ local Info = Instance.new("TextLabel")
 Info.Size = UDim2.new(1, -4, 0, 45)
 Info.LayoutOrder = 9
 Info.BackgroundTransparency = 1
-Info.Text = "PLANETA DOS GUARDIOES\nOA FINAL | SISTEMA LOCAL"
+Info.Text = "PLANETA DOS GUARDIOES\nOA | PONTO DE ENCONTRO"
 Info.TextColor3 = C.LightStone
 Info.TextSize = 11
 Info.Font = Enum.Font.Gotham
@@ -2409,7 +2994,7 @@ greenBloom.Parent = Lighting
 -- Brilho do planeta visto de fora (resplendor verde da referencia).
 local planetBloom = Instance.new("BloomEffect")
 planetBloom.Name = "OA_V93_PlanetGlow"
-planetBloom.Enabled = true
+planetBloom.Enabled = false
 planetBloom.Intensity = 0.42
 planetBloom.Size = 48
 planetBloom.Threshold = 0.9
@@ -2442,7 +3027,7 @@ local function setOAAtmosphere(enabled)
     greenBloom.Enabled = enabled
     sunRays.Enabled = enabled
     -- O brilho forte so existe do lado de fora do globo.
-    planetBloom.Enabled = not enabled
+    planetBloom.Enabled = false
 
     if enabled then
         if not savedAtmosphere then
@@ -2494,6 +3079,8 @@ local function updateLocalSystems()
     GPSName.Text = destination.name
     GPSReadout.Text = string.format("Distancia: %.0f metros", distance * STUD_TO_METERS)
     GPSCoords.Text = string.format("X:%.0f Y:%.0f Z:%.0f", destination.position.X, destination.position.Y, destination.position.Z)
+
+
 end
 
 runtimeConnections[#runtimeConnections + 1] = RunService.RenderStepped:Connect(updateLocalSystems)
@@ -2528,6 +3115,21 @@ runtimeConnections[#runtimeConnections + 1] = RunService.RenderStepped:Connect(f
             orb.part.Position = CENTER + (orb.center + offset) * CITY_SCALE
         end
     end
+    if securityNetworkEnabled then
+        for _, droneData in ipairs(securityDrones) do
+            local model = droneData.model
+            if model and model.Parent then
+                local angle = now * droneData.speed + droneData.phase
+                local position = CENTER + Vector3.new(
+                    math.cos(angle) * droneData.radius,
+                    droneData.altitude + math.sin(now * 0.75 + droneData.phase) * 8,
+                    math.sin(angle) * droneData.radius
+                )
+                local tangent = Vector3.new(-math.sin(angle), 0, math.cos(angle))
+                model:PivotTo(CFrame.lookAt(position, position + tangent))
+            end
+        end
+    end
 end)
 
 GUI.Destroying:Connect(function()
@@ -2546,11 +3148,36 @@ end)
 -- MINIMIZAR E ARRASTAR (PC / MOBILE)
 --========================================================
 local minimized = false
-Minimize.Activated:Connect(function()
-    minimized = not minimized
+local expandedPanelSize = UDim2.new(0, 292, 0, 398)
+local collapsedPanelSize = UDim2.new(0, 54, 0, 54)
+
+local function setMinimized(state)
+    minimized = state
     Content.Visible = not minimized
-    Main.Size = minimized and UDim2.new(0, 320, 0, 50) or UDim2.new(0, 320, 0, 430)
-    Minimize.Text = minimized and "+" or "_"
+    Subtitle.Visible = not minimized
+    Title.Visible = not minimized
+    Header.Size = minimized and UDim2.new(1, 0, 1, 0) or UDim2.new(1, 0, 0, 50)
+    Main.Size = minimized and collapsedPanelSize or expandedPanelSize
+
+    if minimized then
+        mainCorner.CornerRadius = UDim.new(1, 0)
+    else
+        mainCorner.CornerRadius = UDim.new(0, 13)
+    end
+
+    Minimize.Size = minimized and UDim2.new(1, -6, 1, -6) or UDim2.new(0, 34, 0, 34)
+    Minimize.Position = minimized and UDim2.new(0, 3, 0, 3) or UDim2.new(1, -42, 0, 8)
+    Minimize.Text = minimized and "OA" or "−"
+    Minimize.TextSize = minimized and 15 or 23
+    Minimize.Font = Enum.Font.GothamBold
+    minCorner.CornerRadius = UDim.new(1, 0)
+    mainStroke.Thickness = minimized and 1.8 or 1.35
+    mainStroke.Transparency = minimized and 0 or 0.12
+    updateResponsiveLayout()
+end
+
+Minimize.Activated:Connect(function()
+    setMinimized(not minimized)
 end)
 
 local dragging = false
@@ -2600,22 +3227,22 @@ task.spawn(function()
 end)
 
 print("========================================")
-print(" OA FINAL | PLANETA DOS GUARDIOES")
+print(" OA RP HUB 2.1 | URBAN REDESIGN")
 print(" Execucao local independente habilitada.")
 print(" Reconstrucao transacional habilitada.")
 print(" GPS sem seta, distancia em metros e atmosfera verde local.")
 print(" Globo opaco verde visto de fora; cidade visivel apenas ao entrar.")
 print(" Nevoa, nuvens, destrocos, estacoes orbitais e berco inferior adicionados.")
-print(" Arquitetura urbana revisada, coberturas e placas apoiadas.")
+print(" Arquitetura urbana revisada, fachadas e distribuicao setorial reorganizadas.")
 print(" Centro de Comando e Museu dos Guardioes adicionados.")
-print(" Bateria Central, telhado hibrido e Citadel monumental adicionados.")
+print(" Bateria Central, telhado hibrido, Citadel e seguranca perimetral adicionados.")
 print(" Edificios com interiores modulares.")
 print(" Citadel, alas e sala de conferencia com coberturas fechadas.")
 print(" Placas com suportes, passarelas com pilares e mobiliario urbano.")
-print(" Globo cartoon: olhos seguem a camera, piscam, sorriso e chapeu de festa.")
+print(" OA RP Hub 2.0: masterplan urbano, setores reorganizados e sinalizacao distrital.")
 print(" Atmosfera interna volumetrica, particulas e feixes de luz.")
 print(" Bateria Central com orbes, coluna de energia e nucleo pulsante.")
 print(" Edificios com colunas de canto, janelas laterais e coroa; torres com antena.")
-print(" Lockdown e portas interativas locais.")
+print(" Lockdown e portas interativas preservados; OA configurada como espaco de roleplay livre.")
 print(" Horario e clima do jogo preservados.")
 print("========================================")
